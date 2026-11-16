@@ -27,3 +27,8 @@ voices_dir = "data/voices"
 remember = true
 memory_path = "data/memory.json"
 max_facts = 100
+
+# Tasks: time, weather, opening apps, screenshots, locking the screen
+use_tools = true
+home_city = ""                # used for the weather when you don't name a city
+screenshot_folder = ""        # empty means Pictures/Jarvis in your home folder

@@ -1,16 +1,22 @@
-"""Conversation state: keeps the history and streams replies from the model."""
+"""Conversation state: keeps the history, runs tools, and streams replies from the model."""
 
 from __future__ import annotations
 
-from typing import Callable, Iterator, Protocol
+from typing import Any, Callable, Iterator, Protocol
 
 from jarvis.llm import Message
+from jarvis.tools import ToolBox, ToolCall
 
 
 class ChatClient(Protocol):
     """Anything that can stream a reply for a list of messages."""
 
-    def stream_chat(self, messages: list[Message], temperature: float = 0.7) -> Iterator[str]: ...
+    def stream_chat(
+        self,
+        messages: list[Message],
+        temperature: float = 0.7,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> Iterator[str | ToolCall]: ...
 
 
 class Conversation:
@@ -23,6 +29,8 @@ class Conversation:
         max_turns: int = 12,
         temperature: float = 0.7,
         on_exchange: Callable[[str, str], None] | None = None,
+        toolbox: ToolBox | None = None,
+        on_tool: Callable[[ToolCall, str], None] | None = None,
     ) -> None:
         if max_turns < 1:
             raise ValueError("max_turns must be at least 1")
@@ -31,6 +39,8 @@ class Conversation:
         self._max_turns = max_turns
         self._temperature = temperature
         self._on_exchange = on_exchange
+        self._toolbox = toolbox
+        self._on_tool = on_tool
         self._history: list[Message] = []
 
     @property
@@ -58,7 +68,7 @@ class Conversation:
             user_message,
         ]
         pieces: list[str] = []
-        for piece in self._client.stream_chat(messages, temperature=self._temperature):
+        for piece in self._reply(messages, text):
             pieces.append(piece)
             yield piece
         reply = "".join(pieces).strip()
@@ -67,6 +77,58 @@ class Conversation:
             self._history.append({"role": "assistant", "content": reply})
             if self._on_exchange is not None:
                 self._on_exchange(text, reply)
+
+    def _reply(self, messages: list[Message], text: str) -> Iterator[str]:
+        tools = self._toolbox.relevant(text) if self._toolbox else []
+        if not tools:
+            yield from self._stream_text(messages)
+            return
+
+        # With tools on offer the first answer is collected rather than
+        # streamed: it is usually a tool call, which has no text to show.
+        calls: list[ToolCall] = []
+        said: list[str] = []
+        for item in self._client.stream_chat(
+            messages, temperature=self._temperature, tools=[tool.schema() for tool in tools]
+        ):
+            if isinstance(item, ToolCall):
+                calls.append(item)
+            else:
+                said.append(item)
+
+        if not calls:
+            answer = "".join(said).strip()
+            # Small models sometimes write a tool call out as text instead of
+            # making it. That is not a reply; answer again without tools.
+            if answer and not answer.startswith("{"):
+                yield answer
+            else:
+                yield from self._stream_text(messages)
+            return
+
+        messages = [
+            *messages,
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"function": {"name": call.name, "arguments": call.arguments}} for call in calls
+                ],
+            },
+        ]
+        for call in calls:
+            result = self._toolbox.call(call)
+            if self._on_tool is not None:
+                self._on_tool(call, result)
+            messages.append({"role": "tool", "content": result})
+        # The follow-up is asked without tools, so the model reports the
+        # result instead of calling something else.
+        yield from self._stream_text(messages)
+
+    def _stream_text(self, messages: list[Message]) -> Iterator[str]:
+        for item in self._client.stream_chat(messages, temperature=self._temperature):
+            if isinstance(item, str):
+                yield item
 
     def _current_system_prompt(self) -> str:
         # A callable prompt is rebuilt for every message, so newly learned

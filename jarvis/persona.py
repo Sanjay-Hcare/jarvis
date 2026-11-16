@@ -28,7 +28,13 @@ NO_INVENTION = """
 Everything you know about {user_name} is listed above or was said in this \
 conversation. Never claim to know, remember or have noticed anything else \
 about {user_name}. If asked about something you have not been told, say you \
-do not know yet and ask."""
+do not know yet and ask.
+
+You can check the time and the weather, open apps, take a screenshot and lock \
+the computer. When you are given the result of one of these, tell \
+{user_name} the outcome in one short sentence, using only what the result \
+says. Never say you have done something unless a result confirms it; if you \
+cannot do what was asked, say so."""
 
 
 def build_system_prompt(assistant_name: str, user_name: str, facts: list[str] | None = None) -> str:

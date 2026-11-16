@@ -44,6 +44,11 @@ class Settings:
     memory_path: str = "data/memory.json"
     max_facts: int = 100
 
+    # Tasks
+    use_tools: bool = True  # time, weather, opening apps, screenshots, locking
+    home_city: str = ""  # used for the weather when no city is mentioned
+    screenshot_folder: str = ""  # empty means Pictures/Jarvis in your home folder
+
 
 def _to_bool(value: object) -> bool:
     if isinstance(value, bool):
@@ -85,6 +90,7 @@ def load_settings(path: Path | None = None, env: dict[str, str] | None = None) -
         "tts_speed": float,
         "speak": _to_bool,
         "remember": _to_bool,
+        "use_tools": _to_bool,
         "max_facts": int,
     }
     for name, cast in casts.items():

@@ -7,15 +7,17 @@ import urllib.error
 import urllib.request
 from typing import Any, Iterable, Iterator
 
-Message = dict[str, str]
+from jarvis.tools import ToolCall
+
+Message = dict[str, Any]
 
 
 class LLMError(RuntimeError):
     """The language model could not produce a reply."""
 
 
-def iter_content(lines: Iterable[bytes]) -> Iterator[str]:
-    """Yield text pieces from Ollama's newline-delimited JSON chat stream."""
+def iter_content(lines: Iterable[bytes]) -> Iterator[str | ToolCall]:
+    """Yield text pieces and tool calls from Ollama's newline-delimited JSON chat stream."""
     for raw in lines:
         raw = raw.strip()
         if not raw:
@@ -23,9 +25,17 @@ def iter_content(lines: Iterable[bytes]) -> Iterator[str]:
         event = json.loads(raw)
         if "error" in event:
             raise LLMError(str(event["error"]))
-        piece = event.get("message", {}).get("content", "")
+        message = event.get("message", {})
+        piece = message.get("content", "")
         if piece:
             yield piece
+        for call in message.get("tool_calls") or []:
+            function = call.get("function", {})
+            arguments = function.get("arguments")
+            yield ToolCall(
+                name=str(function.get("name", "")),
+                arguments=arguments if isinstance(arguments, dict) else {},
+            )
         if event.get("done"):
             return
 
@@ -66,11 +76,25 @@ class OllamaClient:
             raise LLMError(f"The model did not return usable JSON: {exc}") from exc
         return parsed if isinstance(parsed, dict) else {}
 
-    def stream_chat(self, messages: list[Message], temperature: float = 0.7) -> Iterator[str]:
-        """Send the conversation and yield the reply piece by piece."""
-        request = self._request(
-            {"messages": messages, "stream": True, "options": {"temperature": temperature}}
-        )
+    def stream_chat(
+        self,
+        messages: list[Message],
+        temperature: float = 0.7,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> Iterator[str | ToolCall]:
+        """Send the conversation and yield the reply piece by piece.
+
+        When tools are offered, the stream may contain ToolCall items instead
+        of (or as well as) text.
+        """
+        payload: dict[str, Any] = {
+            "messages": messages,
+            "stream": True,
+            "options": {"temperature": temperature},
+        }
+        if tools:
+            payload["tools"] = tools
+        request = self._request(payload)
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 yield from iter_content(response)

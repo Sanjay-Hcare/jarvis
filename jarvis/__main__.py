@@ -15,6 +15,8 @@ from jarvis.config import Settings, load_settings
 from jarvis.llm import LLMError, OllamaClient
 from jarvis.memory import FactExtractor, Memory, MemoryStore
 from jarvis.persona import build_system_prompt
+from jarvis.tasks import default_tools
+from jarvis.tools import ToolBox, ToolCall
 
 HELP = (
     "Commands: /memory shows what I remember, /remember <fact> adds one, "
@@ -33,6 +35,17 @@ def build_memory(settings: Settings, client: OllamaClient) -> Memory | None:
     )
 
 
+def build_toolbox(settings: Settings) -> ToolBox | None:
+    if not settings.use_tools:
+        return None
+    return ToolBox(default_tools(home_city=settings.home_city, screenshot_folder=settings.screenshot_folder))
+
+
+def announce_tool(call: ToolCall, result: str) -> None:
+    """Show what was actually done, independent of how the model words it."""
+    print(f"[{call.name}: {result}]", flush=True)
+
+
 def build_conversation(settings: Settings, client: OllamaClient, memory: Memory | None) -> Conversation:
     def system_prompt() -> str:
         facts = memory.store.facts if memory else None
@@ -44,6 +57,8 @@ def build_conversation(settings: Settings, client: OllamaClient, memory: Memory 
         max_turns=settings.max_turns,
         temperature=settings.temperature,
         on_exchange=memory.observe if memory else None,
+        toolbox=build_toolbox(settings),
+        on_tool=announce_tool,
     )
 
 
