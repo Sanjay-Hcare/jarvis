@@ -1,0 +1,10 @@
+# Personal settings and anything the assistant learns about you stay local.
+config.toml
+data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
