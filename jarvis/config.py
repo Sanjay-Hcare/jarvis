@@ -39,6 +39,11 @@ class Settings:
     tts_speed: float = 1.0  # above 1 talks faster
     voices_dir: str = "data/voices"  # where downloaded voices are kept
 
+    # Memory
+    remember: bool = True  # learn and recall facts about the user
+    memory_path: str = "data/memory.json"
+    max_facts: int = 100
+
 
 def _to_bool(value: object) -> bool:
     if isinstance(value, bool):
@@ -79,6 +84,8 @@ def load_settings(path: Path | None = None, env: dict[str, str] | None = None) -
         "min_record_seconds": float,
         "tts_speed": float,
         "speak": _to_bool,
+        "remember": _to_bool,
+        "max_facts": int,
     }
     for name, cast in casts.items():
         if name in values:

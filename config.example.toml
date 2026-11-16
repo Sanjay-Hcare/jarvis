@@ -22,3 +22,8 @@ speak = true                  # false gives text replies only
 tts_voice = "en_GB-alan-medium"  # any voice from https://rhasspy.github.io/piper-samples/
 tts_speed = 1.0               # above 1 talks faster
 voices_dir = "data/voices"
+
+# Memory: facts it learns about you, kept only in this file on your computer
+remember = true
+memory_path = "data/memory.json"
+max_facts = 100

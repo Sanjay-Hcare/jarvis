@@ -13,7 +13,7 @@ things for you. It is being built in small, working steps.
 | 1 | Text chat with a fast local model and a companion personality | Done |
 | 2 | Hearing: push-to-talk and speech recognition | Done |
 | 3 | Voice: natural speech, streamed sentence by sentence | Done |
-| 4 | Memory: remembers facts about you between conversations | Planned |
+| 4 | Memory: remembers facts about you between conversations | Done |
 | 5 | Tasks: time, weather, apps, screenshots | Planned |
 | 6 | Email and calendar | Planned |
 
@@ -36,7 +36,7 @@ No packages need to be installed for the text chat; it uses only the Python
 standard library.
 
 ```
-Jarvis is ready (model: llama3.2:3b). Commands: /reset forgets this conversation, /quit exits.
+Jarvis is ready (model: llama3.2:3b). Commands: /memory shows what I remember, ...
 
 You: Tell me a quick joke.
 Jarvis: Why did the programmer quit his job? Because he didn't get arrays.
@@ -83,6 +83,41 @@ change the voice, set `tts_voice` to any name from the
 The talk key is watched system-wide while voice mode runs, so it works even
 when another window is in front. Only that one key is checked.
 
+## Memory
+
+Jarvis learns lasting facts about you from what you say and uses them in
+later conversations:
+
+```
+You: I'm learning Python and my best friend is Arjun.
+[remembered: Sanjay is learning Python.]
+[remembered: Sanjay's best friend is Arjun.]
+```
+
+The next day, in a new session:
+
+```
+You: Who is my best friend?
+Jarvis: That's Arjun.
+You: What is the name of my dog?
+Jarvis: I don't know that. Do you have a dog?
+```
+
+How it works:
+
+- After each reply, a background call asks the model whether your message
+  stated a lasting fact about you. Questions and requests are skipped, and a
+  fact is kept only if its words actually appear in what you said, so the
+  model cannot write its own guesses into memory.
+- Facts are stored in `data/memory.json` on your computer and nowhere else.
+  The file is plain JSON; you can read and edit it.
+- Known facts are added to the system prompt, together with an instruction
+  never to claim knowledge about you beyond them.
+
+In text mode: `/memory` lists what it knows, `/remember <fact>` adds a fact,
+`/forget <words>` removes matching facts. Set `remember = false` to turn
+memory off.
+
 ## Settings
 
 Copy `config.example.toml` to `config.toml` and edit it. The most useful
@@ -109,7 +144,8 @@ pytest
 |---|---|
 | `jarvis/llm.py` | Streaming client for Ollama |
 | `jarvis/chat.py` | Conversation history and reply streaming |
-| `jarvis/persona.py` | The assistant's personality |
+| `jarvis/persona.py` | The assistant's personality and how memory enters the prompt |
+| `jarvis/memory.py` | Fact store, fact extraction and background learning |
 | `jarvis/config.py` | Settings from `config.toml` and the environment |
 | `jarvis/stt.py` | Speech to text (faster-whisper, GPU with CPU fallback) |
 | `jarvis/audio.py` | Microphone recording |

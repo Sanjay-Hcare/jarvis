@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from typing import Iterable, Iterator
+from typing import Any, Iterable, Iterator
 
 Message = dict[str, str]
 
@@ -45,21 +45,31 @@ class OllamaClient:
         self.keep_alive = keep_alive
         self.timeout = timeout
 
+    def _request(self, payload: dict[str, Any]) -> urllib.request.Request:
+        body = json.dumps({"model": self.model, "keep_alive": self.keep_alive, **payload})
+        return urllib.request.Request(
+            f"{self.host}/api/chat",
+            data=body.encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+
+    def chat_json(self, messages: list[Message]) -> dict[str, Any]:
+        """Ask for a complete reply that is guaranteed to be a JSON object."""
+        request = self._request(
+            {"messages": messages, "stream": False, "format": "json", "options": {"temperature": 0}}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                content = json.load(response).get("message", {}).get("content", "")
+            parsed = json.loads(content)
+        except (urllib.error.URLError, TimeoutError, ConnectionError, json.JSONDecodeError) as exc:
+            raise LLMError(f"The model did not return usable JSON: {exc}") from exc
+        return parsed if isinstance(parsed, dict) else {}
+
     def stream_chat(self, messages: list[Message], temperature: float = 0.7) -> Iterator[str]:
         """Send the conversation and yield the reply piece by piece."""
-        body = json.dumps(
-            {
-                "model": self.model,
-                "messages": messages,
-                "stream": True,
-                "keep_alive": self.keep_alive,
-                "options": {"temperature": temperature},
-            }
-        ).encode("utf-8")
-        request = urllib.request.Request(
-            f"{self.host}/api/chat",
-            data=body,
-            headers={"Content-Type": "application/json"},
+        request = self._request(
+            {"messages": messages, "stream": True, "options": {"temperature": temperature}}
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:

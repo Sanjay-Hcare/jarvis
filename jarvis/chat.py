@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterator, Protocol
+from typing import Callable, Iterator, Protocol
 
 from jarvis.llm import Message
 
@@ -19,9 +19,10 @@ class Conversation:
     def __init__(
         self,
         client: ChatClient,
-        system_prompt: str,
+        system_prompt: str | Callable[[], str],
         max_turns: int = 12,
         temperature: float = 0.7,
+        on_exchange: Callable[[str, str], None] | None = None,
     ) -> None:
         if max_turns < 1:
             raise ValueError("max_turns must be at least 1")
@@ -29,6 +30,7 @@ class Conversation:
         self._system_prompt = system_prompt
         self._max_turns = max_turns
         self._temperature = temperature
+        self._on_exchange = on_exchange
         self._history: list[Message] = []
 
     @property
@@ -51,7 +53,7 @@ class Conversation:
             return
         user_message: Message = {"role": "user", "content": text}
         messages = [
-            {"role": "system", "content": self._system_prompt},
+            {"role": "system", "content": self._current_system_prompt()},
             *self._recent_history(),
             user_message,
         ]
@@ -63,6 +65,13 @@ class Conversation:
         if reply:
             self._history.append(user_message)
             self._history.append({"role": "assistant", "content": reply})
+            if self._on_exchange is not None:
+                self._on_exchange(text, reply)
+
+    def _current_system_prompt(self) -> str:
+        # A callable prompt is rebuilt for every message, so newly learned
+        # facts are used straight away.
+        return self._system_prompt() if callable(self._system_prompt) else self._system_prompt
 
     def _recent_history(self) -> list[Message]:
         """The last max_turns exchanges, so the prompt stays small and fast."""
