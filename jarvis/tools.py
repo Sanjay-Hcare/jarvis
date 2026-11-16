@@ -7,6 +7,10 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 
+# Every tool reports failure as a result that starts with this.
+ERROR_PREFIX = "Error:"
+
+
 @dataclass(frozen=True)
 class ToolCall:
     """A request from the model to run a tool."""
@@ -28,6 +32,10 @@ class Tool:
     # tool could be relevant is made here, and the model only decides *which*
     # tool and with what arguments.
     triggers: str = ""
+    # For actions (as opposed to lookups) there is nothing to summarise, and a
+    # small model asked to report "Opened notepad." will embellish it. When
+    # set, this fixed sentence is the reply, with no second model call.
+    confirmation: str = ""
 
     def matches(self, text: str) -> bool:
         return bool(self.triggers) and re.search(self.triggers, text, re.IGNORECASE) is not None
@@ -52,6 +60,10 @@ class ToolBox:
     def relevant(self, text: str) -> list[Tool]:
         """Tools worth offering for this message (often none)."""
         return [tool for tool in self._tools.values() if tool.matches(text)]
+
+    def confirmation(self, name: str) -> str:
+        tool = self._tools.get(name)
+        return tool.confirmation if tool else ""
 
     def call(self, call: ToolCall) -> str:
         """Run a tool and describe the outcome in words the model can relay."""

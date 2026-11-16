@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable, Iterator, Protocol
 
 from jarvis.llm import Message
-from jarvis.tools import ToolBox, ToolCall
+from jarvis.tools import ERROR_PREFIX, ToolBox, ToolCall
 
 
 class ChatClient(Protocol):
@@ -32,6 +32,7 @@ class Conversation:
         toolbox: ToolBox | None = None,
         on_tool: Callable[[ToolCall, str], None] | None = None,
         no_action_note: str = "",
+        tool_result_note: str = "",
     ) -> None:
         if max_turns < 1:
             raise ValueError("max_turns must be at least 1")
@@ -43,6 +44,7 @@ class Conversation:
         self._toolbox = toolbox
         self._on_tool = on_tool
         self._no_action_note = no_action_note
+        self._tool_result_note = tool_result_note
         self._history: list[Message] = []
 
     @property
@@ -108,24 +110,34 @@ class Conversation:
                 yield from self._stream_text(self._with_no_action_note(messages))
             return
 
-        messages = [
-            *messages,
-            {
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [
-                    {"function": {"name": call.name, "arguments": call.arguments}} for call in calls
-                ],
-            },
-        ]
+        results = []
+        fixed_replies = []
         for call in calls:
             result = self._toolbox.call(call)
             if self._on_tool is not None:
                 self._on_tool(call, result)
-            messages.append({"role": "tool", "content": result})
-        # The follow-up is asked without tools, so the model reports the
-        # result instead of calling something else.
-        yield from self._stream_text(messages)
+            results.append(f"[Result of {call.name}: {result}]")
+            if result.startswith(ERROR_PREFIX):
+                # Failures are reported word for word; a model asked to relay
+                # "could not check the mailbox" has answered "No emails."
+                detail = result[len(ERROR_PREFIX) :].strip()
+                fixed_replies.append(f"Sorry, that didn't work: {detail}")
+            else:
+                fixed_replies.append(self._toolbox.confirmation(call.name))
+        if all(fixed_replies):
+            yield " ".join(fixed_replies)
+            return
+        # The results are attached to the user's message rather than sent as
+        # separate tool messages: a small model then reliably reports them,
+        # where with the standard tool-message format it often changed the
+        # subject. The follow-up is asked without tools, so it cannot call
+        # something else instead of answering.
+        question = messages[-1]
+        parts = [question["content"], *results]
+        if self._tool_result_note:
+            parts.append(f"[{self._tool_result_note}]")
+        answered = {**question, "content": "\n\n".join(parts)}
+        yield from self._stream_text([*messages[:-1], answered])
 
     def _with_no_action_note(self, messages: list[Message]) -> list[Message]:
         """Remind the model, right before it answers, that nothing was done this turn.

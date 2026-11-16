@@ -15,7 +15,7 @@ things for you. It is being built in small, working steps.
 | 3 | Voice: natural speech, streamed sentence by sentence | Done |
 | 4 | Memory: remembers facts about you between conversations | Done |
 | 5 | Tasks: time, weather, apps, screenshots, lock | Done |
-| 6 | Email and calendar | Planned |
+| 6 | Email and calendar (read-only) | Done |
 
 ## Requirements
 
@@ -131,7 +131,9 @@ Ask in your own words, by voice or by typing:
 | "Lock my computer" | Locks the screen |
 
 What was actually done is printed in square brackets, for example
-`[open_app: Opened notepad.]`, separately from what the model says.
+`[open_app: Opened notepad.]`, separately from what the model says. Actions
+are confirmed in fixed words ("Done, it's open.") and failures are read out
+as they are, without passing through the model.
 
 How it works: the model chooses the tool and its arguments, but a tool is
 only put on offer when your message contains a matching phrase ("open",
@@ -147,6 +149,32 @@ A request phrased without one of the trigger words is treated as ordinary
 chat. The weather lookup is the only feature that
 uses the internet; it sends the city name to Open-Meteo. Set `home_city` to
 skip naming a city, or `use_tools = false` to turn tasks off.
+
+## Email and calendar
+
+Read-only: Jarvis can tell you about unread mail and what is on your calendar,
+and cannot send, delete or change anything.
+
+| Say something like | What happens |
+|---|---|
+| "Any new mail?" / "Check my inbox" | Counts unread mail from the last two days and names the newest senders and subjects |
+| "What's on my calendar today?" / "Any meetings tomorrow?" / "Am I free this week?" | Lists your events |
+
+Set it up once:
+
+```
+pip install -e ".[accounts]"
+```
+
+1. Add `email_address = "you@gmail.com"` to `config.toml`.
+2. Run `python -m jarvis.setup_accounts`. It asks for an email app password
+   and walks you through connecting Google Calendar with the small script in
+   `docs/calendar_script.gs`.
+
+Passwords and the calendar link are stored in your system's credential store
+(Windows Credential Manager, macOS Keychain), never in a file here. The inbox
+is opened read-only and only the sender and subject headers are fetched, so
+nothing is marked as read. For Gmail, only the Primary tab is counted.
 
 ## Settings
 
@@ -178,6 +206,9 @@ pytest
 | `jarvis/memory.py` | Fact store, fact extraction and background learning |
 | `jarvis/tools.py` | Tool definitions and the rules for offering them |
 | `jarvis/tasks.py` | The built-in tools |
+| `jarvis/mail.py` | Read-only inbox summary over IMAP |
+| `jarvis/gcalendar.py` | Calendar lookups through an Apps Script web app |
+| `jarvis/setup_accounts.py` | Stores email and calendar credentials |
 | `jarvis/config.py` | Settings from `config.toml` and the environment |
 | `jarvis/stt.py` | Speech to text (faster-whisper, GPU with CPU fallback) |
 | `jarvis/audio.py` | Microphone recording |

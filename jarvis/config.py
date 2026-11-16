@@ -49,6 +49,13 @@ class Settings:
     home_city: str = ""  # used for the weather when no city is mentioned
     screenshot_folder: str = ""  # empty means Pictures/Jarvis in your home folder
 
+    # Email and calendar (read-only). Secrets live in the system credential
+    # store under keyring_service, never in this file.
+    email_address: str = ""
+    imap_host: str = "imap.gmail.com"
+    keyring_service: str = "jarvis"
+    email_recent_days: int = 2  # "new mail" means unread mail from this many days
+
 
 def _to_bool(value: object) -> bool:
     if isinstance(value, bool):
@@ -91,6 +98,7 @@ def load_settings(path: Path | None = None, env: dict[str, str] | None = None) -
         "speak": _to_bool,
         "remember": _to_bool,
         "use_tools": _to_bool,
+        "email_recent_days": int,
         "max_facts": int,
     }
     for name, cast in casts.items():

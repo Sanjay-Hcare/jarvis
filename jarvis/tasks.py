@@ -14,6 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from jarvis.gcalendar import get_calendar
+from jarvis.mail import check_email
 from jarvis.tools import Tool
 
 # --- time -------------------------------------------------------------------
@@ -173,8 +175,34 @@ def lock_computer(lock: Callable[[], Any] | None = None) -> str:
 # --- registry ---------------------------------------------------------------
 
 
-def default_tools(home_city: str = "", screenshot_folder: str = "") -> list[Tool]:
+def default_tools(
+    home_city: str = "",
+    screenshot_folder: str = "",
+    email_address: str = "",
+    imap_host: str = "imap.gmail.com",
+    keyring_service: str = "jarvis",
+    email_recent_days: int = 2,
+) -> list[Tool]:
     return [
+        Tool(
+            name="check_email",
+            description="Check the user's inbox for recent unread emails: how many, who from, and the subjects.",
+            run=lambda: check_email(email_address, imap_host, keyring_service, email_recent_days),
+            triggers=r"\b(e-?mails?|mails?|inbox)\b",
+        ),
+        Tool(
+            name="get_calendar",
+            description="Look up the events on the user's calendar for today, tomorrow or the coming week.",
+            run=lambda day="today": get_calendar(day, keyring_service),
+            parameters={
+                "type": "object",
+                "properties": {"day": {"type": "string", "enum": ["today", "tomorrow", "week"]}},
+                "required": ["day"],
+            },
+            triggers=r"\b(calendar|schedule|agenda|meetings?|appointments?|events?|"
+            r"what(?:'s| is| do i have)? on (?:today|tomorrow|this week|my)|am i (?:free|busy)|"
+            r"(?:any|my) plans)\b",
+        ),
         Tool(
             name="get_time",
             description="Get the current local time and date.",
@@ -197,6 +225,7 @@ def default_tools(home_city: str = "", screenshot_folder: str = "") -> list[Tool
         Tool(
             name="open_app",
             description="Open an application on the user's computer.",
+            confirmation="Done, it's open.",
             run=open_app,
             parameters={
                 "type": "object",
@@ -208,12 +237,14 @@ def default_tools(home_city: str = "", screenshot_folder: str = "") -> list[Tool
         Tool(
             name="take_screenshot",
             description="Take a screenshot of the user's screen and save it as an image file.",
+            confirmation="Screenshot saved.",
             run=lambda: take_screenshot(screenshot_folder),
             triggers=r"\b(screen ?shot|capture (?:my |the )?screen|screen capture|snip)\b",
         ),
         Tool(
             name="lock_computer",
             description="Lock the user's computer screen.",
+            confirmation="Locked.",
             run=lock_computer,
             triggers=r"\block (?:my |the |this )?(?:computer|pc|laptop|screen|system|machine)\b|\block it\b",
         ),

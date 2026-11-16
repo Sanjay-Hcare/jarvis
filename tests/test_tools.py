@@ -165,6 +165,7 @@ def test_tool_is_run_and_its_result_given_to_the_model():
         "sys",
         toolbox=toolbox_with(lambda: "It is 9:00 AM."),
         on_tool=lambda call, result: announced.append((call.name, result)),
+        tool_result_note="report it",
     )
 
     assert "".join(chat.ask("what time is it")) == "It is nine."
@@ -172,8 +173,12 @@ def test_tool_is_run_and_its_result_given_to_the_model():
     first, second = client.calls
     assert [tool["function"]["name"] for tool in first["tools"]] == ["get_time"]
     assert second["tools"] is None
-    assert second["messages"][-1] == {"role": "tool", "content": "It is 9:00 AM."}
-    assert second["messages"][-2]["tool_calls"][0]["function"]["name"] == "get_time"
+    # The result travels with the question, followed by the instruction to report it.
+    assert second["messages"][-1] == {
+        "role": "user",
+        "content": "what time is it\n\n[Result of get_time: It is 9:00 AM.]\n\n[report it]",
+    }
+    assert [m["role"] for m in second["messages"]] == ["system", "user"]
     # Only the visible exchange is kept as history.
     assert chat.history == [
         {"role": "user", "content": "what time is it"},
@@ -243,3 +248,31 @@ def test_no_action_note_is_sent_but_not_stored_or_used_with_tools():
     list(chat.ask("what time is it"))
     # A turn where a tool ran carries no such note.
     assert all("nothing was done" not in str(m["content"]) for m in client.calls[2]["messages"][-3:])
+
+
+def test_actions_are_confirmed_in_fixed_words_without_asking_the_model():
+    client = ScriptedClient([ToolCall("lock_it")])
+    box = ToolBox([Tool("lock_it", "Lock.", lambda: "The computer is locked.", triggers="lock", confirmation="Locked.")])
+    chat = Conversation(client, "sys", toolbox=box)
+
+    assert "".join(chat.ask("lock it")) == "Locked."
+    assert len(client.calls) == 1
+
+
+def test_failures_are_reported_word_for_word():
+    client = ScriptedClient([ToolCall("check")])
+    box = ToolBox([Tool("check", "Check.", lambda: "Error: could not check the mailbox (connection reset).", triggers="mail")])
+    chat = Conversation(client, "sys", toolbox=box, tool_result_note="report it")
+
+    assert "".join(chat.ask("any mail")) == "Sorry, that didn't work: could not check the mailbox (connection reset)."
+    assert len(client.calls) == 1
+
+
+def test_a_failed_action_is_not_confirmed():
+    def fail():
+        raise RuntimeError("access denied")
+
+    client = ScriptedClient([ToolCall("lock_it")])
+    box = ToolBox([Tool("lock_it", "Lock.", fail, triggers="lock", confirmation="Locked.")])
+
+    assert "".join(Conversation(client, "sys", toolbox=box).ask("lock it")) == "Sorry, that didn't work: access denied"

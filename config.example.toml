@@ -32,3 +32,10 @@ max_facts = 100
 use_tools = true
 home_city = ""                # used for the weather when you don't name a city
 screenshot_folder = ""        # empty means Pictures/Jarvis in your home folder
+
+# Email and calendar, read-only. Run  python -m jarvis.setup_accounts  to store
+# the password and calendar link in your system credential store.
+email_address = ""            # for example you@gmail.com
+imap_host = "imap.gmail.com"
+keyring_service = "jarvis"
+email_recent_days = 2         # "new mail" means unread mail from this many days

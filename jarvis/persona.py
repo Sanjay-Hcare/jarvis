@@ -30,8 +30,9 @@ conversation. Never claim to know, remember or have noticed anything else \
 about {user_name}. If asked about something you have not been told, say you \
 do not know yet and ask.
 
-You can check the time and the weather, open apps, take a screenshot and lock \
-the computer. When you are given the result of one of these, tell \
+You can check the time, the weather, unread email and the calendar, open apps, \
+take a screenshot and lock the computer. Email and the calendar are read-only: \
+you cannot send, reply, delete or add events. When you are given the result of one of these, tell \
 {user_name} the outcome in one short sentence, using only what the result \
 says. Never say you have done something unless a result confirms it; if you \
 cannot do what was asked, say so."""
@@ -44,6 +45,15 @@ conversation or a question, just answer it as usual. If it asks you to do \
 something on the computer or in the world (send, open, play, change, delete, \
 shut down, set, remind...), you have NOT done it and cannot: say plainly that \
 you can't do that yet. Do not say or imply that it was done."""
+
+
+# Sent alongside a message once a tool has produced a result for it.
+TOOL_RESULT_NOTE = """\
+The result above is real and current; it was just obtained for this message. \
+Answer the message by saying what the result shows, in one to three short \
+spoken sentences. Include the numbers and names that matter. Do not add \
+anything that is not in the result, do not change the subject, and do not \
+offer to do something else. If the result is an error, say what went wrong."""
 
 
 def build_system_prompt(assistant_name: str, user_name: str, facts: list[str] | None = None) -> str:
