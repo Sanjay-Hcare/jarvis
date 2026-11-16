@@ -63,6 +63,36 @@ class OllamaClient:
             headers={"Content-Type": "application/json"},
         )
 
+    def problem(self, fetch: Any = None) -> str | None:
+        """Return what is wrong with the setup, in words a user can act on, or None."""
+        fetch = fetch or (lambda url: urllib.request.urlopen(url, timeout=5))
+        try:
+            with fetch(f"{self.host}/api/tags") as response:
+                installed = [str(item.get("name", "")) for item in json.load(response).get("models", [])]
+        except (urllib.error.URLError, OSError, json.JSONDecodeError):
+            return (
+                f"Ollama is not running at {self.host}. Start it (open the Ollama app, or run "
+                "'ollama serve') and try again. Get it from https://ollama.com if it is not installed."
+            )
+        # "llama3.2" on its own means the "latest" tag.
+        wanted = self.model if ":" in self.model else f"{self.model}:latest"
+        if wanted not in installed:
+            return f"The model {self.model} is not installed. Run:  ollama pull {self.model}"
+        return None
+
+    def preload(self) -> None:
+        """Ask Ollama to load the model into memory in the background; never raises."""
+        import threading
+
+        def load() -> None:
+            try:
+                with urllib.request.urlopen(self._request({"messages": []}), timeout=self.timeout):
+                    pass
+            except (urllib.error.URLError, OSError):
+                pass
+
+        threading.Thread(target=load, name="jarvis-preload", daemon=True).start()
+
     def chat_json(self, messages: list[Message]) -> dict[str, Any]:
         """Ask for a complete reply that is guaranteed to be a JSON object."""
         request = self._request(

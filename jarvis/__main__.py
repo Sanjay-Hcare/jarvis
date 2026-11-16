@@ -31,7 +31,7 @@ def build_memory(settings: Settings, client: OllamaClient) -> Memory | None:
     return Memory(
         store,
         FactExtractor(client, settings.user_name),
-        on_learned=lambda fact: print(f"\n[remembered: {fact}]", flush=True),
+        on_learned=lambda fact: print(f"[remembered: {fact}]", flush=True),
     )
 
 
@@ -121,11 +121,18 @@ def run_text_chat(conversation: Conversation, settings: Settings, memory: Memory
                 return 0
             continue
 
-        print(f"{name}: ", end="", flush=True)
         try:
+            started = False
             for piece in conversation.ask(text):
+                if not started:
+                    # Printed late so that tool lines come out above the reply.
+                    print(f"{name}: ", end="", flush=True)
+                    started = True
                 print(piece, end="", flush=True)
             print()
+            if memory is not None:
+                # Let "[remembered: ...]" lines appear before the next prompt.
+                memory.wait()
         except LLMError as exc:
             print(f"\n[{exc}]", file=sys.stderr)
         except KeyboardInterrupt:
@@ -150,6 +157,12 @@ def main(argv: list[str] | None = None) -> int:
         keep_alive=settings.keep_alive,
         timeout=settings.request_timeout,
     )
+    problem = client.problem()
+    if problem:
+        print(problem, file=sys.stderr)
+        return 2
+    # Load the model now, so the first reply is not held up by it.
+    client.preload()
     memory = build_memory(settings, client)
     conversation = build_conversation(settings, client, memory)
 

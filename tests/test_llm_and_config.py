@@ -58,3 +58,31 @@ def test_boolean_settings_from_environment(tmp_path):
     assert load_settings(tmp_path / "none.toml", env={"JARVIS_SPEAK": "On"}).speak is True
     with pytest.raises(ValueError):
         load_settings(tmp_path / "none.toml", env={"JARVIS_SPEAK": "maybe"})
+
+
+class FakeResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        import io
+
+        return io.BytesIO(json.dumps(self.payload).encode())
+
+    def __exit__(self, *args):
+        return False
+
+
+def test_setup_problems_are_explained():
+    from jarvis.llm import OllamaClient
+
+    def tags(*names):
+        return lambda url: FakeResponse({"models": [{"name": name} for name in names]})
+
+    def offline(url):
+        raise OSError("connection refused")
+
+    assert OllamaClient("http://x", "llama3.2:3b").problem(tags("llama3.2:3b", "other:1b")) is None
+    assert OllamaClient("http://x", "llama3.2").problem(tags("llama3.2:latest")) is None
+    assert "ollama pull llama3.2:3b" in OllamaClient("http://x", "llama3.2:3b").problem(tags("other:1b"))
+    assert "Ollama is not running at http://x" in OllamaClient("http://x", "llama3.2:3b").problem(offline)

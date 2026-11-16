@@ -39,8 +39,12 @@ def _start_speaker(settings: Settings) -> Any:
 def reply_aloud(conversation: Conversation, text: str, name: str, speaker: Any) -> None:
     """Print the reply as it streams and speak each sentence as soon as it is complete."""
     splitter = SentenceSplitter()
-    print(f"{name}: ", end="", flush=True)
+    started = False
     for piece in conversation.ask(text):
+        if not started:
+            # Printed late so that tool lines come out above the reply.
+            print(f"{name}: ", end="", flush=True)
+            started = True
         print(piece, end="", flush=True)
         if speaker is not None:
             for sentence in splitter.feed(piece):

@@ -11,6 +11,7 @@ dependencies = []
 dev = ["pytest>=8"]
 tasks = ["pillow>=10"]  # screenshots
 accounts = ["keyring>=24"]  # email and calendar
+all = ["jarvis[voice,tasks,accounts]"]
 voice = [
     "faster-whisper>=1.1",
     "numpy>=1.26",

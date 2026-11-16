@@ -1,126 +1,122 @@
 # Jarvis
 
-A fast, fully local companion and assistant. It runs on your own computer with
-[Ollama](https://ollama.com): nothing you say leaves the machine.
+A fast voice companion that runs entirely on your own computer. You hold a
+key and talk; it answers out loud in about a second, remembers what you tell
+it about yourself, and can do a few things for you.
 
-The goal is a voice assistant that answers quickly, remembers you, and can do
-things for you. It is being built in small, working steps.
+It uses [Ollama](https://ollama.com) for the language model,
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper) to hear you and
+[Piper](https://github.com/OHF-Voice/piper1-gpl) to speak. No account, no API
+key, and no audio or conversation leaves the machine.
 
-## Status
+## What it looks like
 
-| Step | What | State |
-|---|---|---|
-| 1 | Text chat with a fast local model and a companion personality | Done |
-| 2 | Hearing: push-to-talk and speech recognition | Done |
-| 3 | Voice: natural speech, streamed sentence by sentence | Done |
-| 4 | Memory: remembers facts about you between conversations | Done |
-| 5 | Tasks: time, weather, apps, screenshots, lock | Done |
-| 6 | Email and calendar (read-only) | Done |
+A real session (typed here; in voice mode the same lines are spoken):
 
-## Requirements
+```
+You: Hi Jarvis. I'm learning Python and my sister's name is Priya.
+Jarvis: I'm happy to help you with Python, Sam. Now, about your sister Priya - that's a great name. Does Priya know you're learning Python?
+[remembered: Sam is learning Python.]
+[remembered: Sam's sister is named Priya.]
 
-- Python 3.11 or newer
-- [Ollama](https://ollama.com) running locally, with a chat model pulled:
+You: What time is it?
+[get_time: It is 1:16 AM on Tuesday, 17 November 2026.]
+Jarvis: It is 1:16 AM on Tuesday, 17 November 2026.
+
+You: What's the weather like in Mumbai?
+[get_weather: Mumbai, India: clear sky, 25°C (feels like 26°C), wind 3 km/h. Today: high 33°C, low 22°C, 0% chance of rain.]
+Jarvis: Mumbai, India is currently clear with a temperature of 25°C, feeling like 26°C, and a gentle wind of 3 km/h. The forecast shows a high of 33°C and a low of 22°C today, with no chance of rain.
+
+You: Send an email to my boss.
+Jarvis: I can't send an email yet, Sam.
+```
+
+After closing it and starting it again:
+
+```
+You: What's my sister called?
+Jarvis: Your sister's name is Priya.
+```
+
+Lines in square brackets are printed by the program, not written by the
+model: they show what was really looked up, done or remembered.
+
+## What it can do
+
+| | |
+|---|---|
+| **Talk** | Push-to-talk; replies are spoken sentence by sentence as they are generated, and you can interrupt by pressing the key again |
+| **Remember** | Learns lasting facts about you and uses them in later conversations |
+| **Tell you things** | Time and date, weather for any city |
+| **Do things** | Open apps, take a screenshot, lock the screen |
+| **Check on your day** | Unread email and calendar events (read-only) |
+
+Measured on a laptop with an RTX 4050 (6 GB): the first word of a reply
+arrives about 0.1 seconds after the question, a sentence is transcribed in
+about 0.3 seconds, and in voice mode the reply starts playing roughly one
+second after you stop talking. Without an NVIDIA GPU everything still works,
+with slower speech recognition.
+
+## Quick start
+
+You need Python 3.11 or newer and [Ollama](https://ollama.com).
 
 ```
 ollama pull llama3.2:3b
-```
-
-## Run it
-
-```
+git clone https://github.com/Sanjay-Hcare/jarvis
+cd jarvis
 python -m jarvis
 ```
 
-No packages need to be installed for the text chat; it uses only the Python
-standard library.
+That is the text chat, which needs no packages at all. For voice:
 
 ```
-Jarvis is ready (model: llama3.2:3b). Commands: /memory shows what I remember, ...
-
-You: Tell me a quick joke.
-Jarvis: Why did the programmer quit his job? Because he didn't get arrays.
-```
-
-On a laptop RTX 4050 the first word arrives in about 0.1 seconds once the
-model is loaded. The very first reply after a break takes around 10 seconds
-while Ollama loads the model into memory.
-
-## Talk to it
-
-Install the voice packages once, then start in voice mode:
-
-```
-pip install -e ".[voice]"
+pip install -e ".[all]"
 python -m jarvis --voice
 ```
 
-Hold **Right Ctrl**, speak, and release. Your words are transcribed by
-[faster-whisper](https://github.com/SYSTRAN/faster-whisper) and sent to the
-model. The reply is printed and spoken aloud with
-[Piper](https://github.com/OHF-Voice/piper1-gpl), one sentence at a time, so
-it starts talking before the whole reply has been written. Press the talk key
-while it is speaking to interrupt it.
+Hold **Right Ctrl**, speak, release. The first run downloads the speech
+recognition model (about 480 MB) and the voice (about 60 MB); after that they
+load from disk and no network is needed.
 
-```
-Jarvis is listening (speech recognition on cuda, voice en_GB-alan-medium). Hold ctrl_r to talk, Ctrl+C to quit.
+On Windows you can also double-click `jarvis.bat`, which starts Ollama if
+needed and opens voice mode (`jarvis --text` for typing).
 
-You: Hey Jarvis, remind me to call my friend tomorrow at five.   (0.3s)
-Jarvis: ...
-```
+Tell it your name by copying `config.example.toml` to `config.toml` and
+setting `user_name`.
 
-The first run downloads the speech recognition model (about 480 MB) and the
-voice (about 60 MB); after that both load from disk and need no network. On a
-laptop RTX 4050 a short sentence is transcribed in about 0.3 seconds and the
-reply starts playing about a second after you stop talking. Without an NVIDIA
-GPU, speech recognition falls back to the CPU.
+## Voice
 
-No Right Ctrl key? Set `push_to_talk_key` to another key such as `f9`. To
-change the voice, set `tts_voice` to any name from the
-[Piper voice samples](https://rhasspy.github.io/piper-samples/); set
-`speak = false` for text replies only.
-
-The talk key is watched system-wide while voice mode runs, so it works even
-when another window is in front. Only that one key is checked.
+- **Talk key.** `push_to_talk_key` in `config.toml`; use `f9` or `alt_r` if
+  your keyboard has no Right Ctrl. The key is watched system-wide while voice
+  mode runs, so it works when another window is in front. Only that one key
+  is checked.
+- **Voice.** `tts_voice` takes any name from the
+  [Piper voice samples](https://rhasspy.github.io/piper-samples/);
+  `tts_speed = 1.1` talks a little faster; `speak = false` gives text replies.
+- **Accuracy.** `stt_model` can be `tiny`, `base`, `small` (default) or
+  `medium`. Bigger is more accurate and slower. `stt_language = ""` lets it
+  detect the language instead of assuming English.
 
 ## Memory
 
-Jarvis learns lasting facts about you from what you say and uses them in
-later conversations:
+After each reply, a background call asks the model whether your message
+stated a lasting fact about you. Two guards keep the model from writing its
+own guesses into memory: questions and requests are never examined, and a
+fact is kept only if its words actually appear in what you said.
 
-```
-You: I'm learning Python and my best friend is Arjun.
-[remembered: Sanjay is learning Python.]
-[remembered: Sanjay's best friend is Arjun.]
-```
+Facts live in `data/memory.json` on your computer, as plain JSON you can read
+and edit. They are added to the system prompt along with an instruction never
+to claim knowledge about you beyond them, which is why it answers "I don't
+know that yet" rather than inventing a dog's name.
 
-The next day, in a new session:
-
-```
-You: Who is my best friend?
-Jarvis: That's Arjun.
-You: What is the name of my dog?
-Jarvis: I don't know that. Do you have a dog?
-```
-
-How it works:
-
-- After each reply, a background call asks the model whether your message
-  stated a lasting fact about you. Questions and requests are skipped, and a
-  fact is kept only if its words actually appear in what you said, so the
-  model cannot write its own guesses into memory.
-- Facts are stored in `data/memory.json` on your computer and nowhere else.
-  The file is plain JSON; you can read and edit it.
-- Known facts are added to the system prompt, together with an instruction
-  never to claim knowledge about you beyond them.
-
-In text mode: `/memory` lists what it knows, `/remember <fact>` adds a fact,
-`/forget <words>` removes matching facts. Set `remember = false` to turn
-memory off.
+In text mode, `/memory` lists what it knows, `/remember <fact>` adds a fact
+and `/forget <words>` removes matching ones. `remember = false` turns memory
+off.
 
 ## Tasks
 
-Ask in your own words, by voice or by typing:
+Ask in your own words:
 
 | Say something like | What happens |
 |---|---|
@@ -129,65 +125,58 @@ Ask in your own words, by voice or by typing:
 | "Open notepad" / "Launch the calculator" | Opens one of: browser, calculator, command prompt, file explorer, notepad, paint, settings, task manager |
 | "Take a screenshot" | Saves an image to `Pictures/Jarvis` |
 | "Lock my computer" | Locks the screen |
+| "Any new mail?" | Counts unread mail from the last two days and names the newest senders and subjects |
+| "What's on my calendar today?" / "Am I free this week?" | Lists your events |
 
-What was actually done is printed in square brackets, for example
-`[open_app: Opened notepad.]`, separately from what the model says. Actions
-are confirmed in fixed words ("Done, it's open.") and failures are read out
-as they are, without passing through the model.
+Opening apps, screenshots and locking work on Windows. Apps come from a fixed
+list, so nothing the model says is ever run as a command.
 
-How it works: the model chooses the tool and its arguments, but a tool is
-only put on offer when your message contains a matching phrase ("open",
-"weather", "screenshot"...). A small local model will otherwise call a tool
-for almost anything, such as checking the time when asked for a joke. Apps
-come from a fixed list, so nothing the model says is run as a command.
+### Email and calendar
 
-When no tool was run, a short note is attached to your message telling the
-model that nothing was done, so that it answers "I can't send email yet"
-rather than "Email sent". This is a strong nudge to a small model, not a
-guarantee: the bracketed line is the only reliable record of what happened.
-A request phrased without one of the trigger words is treated as ordinary
-chat. The weather lookup is the only feature that
-uses the internet; it sends the city name to Open-Meteo. Set `home_city` to
-skip naming a city, or `use_tools = false` to turn tasks off.
-
-## Email and calendar
-
-Read-only: Jarvis can tell you about unread mail and what is on your calendar,
-and cannot send, delete or change anything.
-
-| Say something like | What happens |
-|---|---|
-| "Any new mail?" / "Check my inbox" | Counts unread mail from the last two days and names the newest senders and subjects |
-| "What's on my calendar today?" / "Any meetings tomorrow?" / "Am I free this week?" | Lists your events |
-
-Set it up once:
-
-```
-pip install -e ".[accounts]"
-```
+These are read-only: nothing can be sent, deleted or changed.
 
 1. Add `email_address = "you@gmail.com"` to `config.toml`.
 2. Run `python -m jarvis.setup_accounts`. It asks for an email app password
    and walks you through connecting Google Calendar with the small script in
    `docs/calendar_script.gs`.
 
-Passwords and the calendar link are stored in your system's credential store
-(Windows Credential Manager, macOS Keychain), never in a file here. The inbox
-is opened read-only and only the sender and subject headers are fetched, so
+Passwords and the calendar link go into your system's credential store
+(Windows Credential Manager, macOS Keychain), never into a file here. The
+inbox is opened read-only and only sender and subject headers are fetched, so
 nothing is marked as read. For Gmail, only the Primary tab is counted.
+
+## Making a small model dependable
+
+A 3-billion-parameter model is fast enough for conversation but unreliable in
+ways that matter for an assistant. Each of these was observed and then fixed
+in code rather than by asking the model nicely:
+
+| The model would... | So the program... |
+|---|---|
+| Call a tool for anything ("tell me a joke" checked the time) | Offers a tool only when the message contains a matching phrase; the model picks which tool and its arguments |
+| Claim actions it never took ("Email sent to Arjun.") | Attaches a note to the message, when no tool ran, saying nothing was done |
+| Change the subject after a lookup | Attaches the result to the question with an instruction to report it |
+| Embellish confirmations ("the window is 600x400 pixels") | Confirms actions in fixed words, with no second model call |
+| Turn a failure into good news (a mailbox error became "No emails.") | Reads errors out word for word |
+| Store its own guesses as facts about you | Only examines statements, and requires a fact's words to appear in what you said |
+
+These are strong nudges and hard rules where a hard rule was possible. They
+are not a guarantee: the model can still add a detail that is not in a result,
+so when it matters, trust the bracketed line.
+
+## Privacy
+
+Everything runs locally except two lookups, which happen only when you ask:
+the weather sends the city name to Open-Meteo, and email and calendar connect
+to your own mail and Google accounts. Your settings, memory, voices and
+credentials are never part of the repository (`config.toml` and `data/` are
+ignored by git).
 
 ## Settings
 
-Copy `config.example.toml` to `config.toml` and edit it. The most useful
-setting is your name:
-
-```toml
-user_name = "Sam"
-```
-
-Any setting can also be given as an environment variable, for example
-`JARVIS_MODEL=qwen2.5:7b`. `config.toml` is ignored by git, so personal
-details stay on your machine.
+Every setting, with its default, is listed in `config.example.toml`. Any of
+them can also be given as an environment variable, for example
+`JARVIS_MODEL=qwen2.5:7b`.
 
 ## Development
 
@@ -196,29 +185,30 @@ pip install -e ".[dev]"
 pytest
 ```
 
-## How it is organised
+The tests use stand-ins for the model, microphone, speakers, mail server and
+calendar, so they run anywhere in under a second.
 
 | File | Purpose |
 |---|---|
+| `jarvis/__main__.py` | Command line entry point and text chat |
+| `jarvis/chat.py` | Conversation history, tool use and reply streaming |
 | `jarvis/llm.py` | Streaming client for Ollama |
-| `jarvis/chat.py` | Conversation history and reply streaming |
-| `jarvis/persona.py` | The assistant's personality and how memory enters the prompt |
+| `jarvis/persona.py` | Personality, and the notes attached to messages |
 | `jarvis/memory.py` | Fact store, fact extraction and background learning |
 | `jarvis/tools.py` | Tool definitions and the rules for offering them |
 | `jarvis/tasks.py` | The built-in tools |
 | `jarvis/mail.py` | Read-only inbox summary over IMAP |
 | `jarvis/gcalendar.py` | Calendar lookups through an Apps Script web app |
 | `jarvis/setup_accounts.py` | Stores email and calendar credentials |
-| `jarvis/config.py` | Settings from `config.toml` and the environment |
-| `jarvis/stt.py` | Speech to text (faster-whisper, GPU with CPU fallback) |
+| `jarvis/voice.py` | The voice loop |
+| `jarvis/stt.py` | Speech to text (GPU with CPU fallback) |
 | `jarvis/audio.py` | Microphone recording |
 | `jarvis/ptt.py` | Push-to-talk key handling |
 | `jarvis/sentences.py` | Cuts the streamed reply into sentences |
-| `jarvis/tts.py` | Text to speech (Piper) with background, interruptible playback |
-| `jarvis/voice.py` | The voice loop |
-| `jarvis/__main__.py` | Command line entry point and text chat |
+| `jarvis/tts.py` | Text to speech with background, interruptible playback |
+| `jarvis/config.py` | Settings from `config.toml` and the environment |
 
 ## License
 
-MIT. The optional voice packages have their own licenses; in particular Piper
+MIT. The optional packages have their own licenses; in particular Piper
 (`piper-tts`) is GPL-3.0.
