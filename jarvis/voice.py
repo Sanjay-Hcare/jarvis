@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import time
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,7 @@ from jarvis.config import Settings
 from jarvis.llm import LLMError
 from jarvis.sentences import SentenceSplitter
 
-MISSING_PACKAGES = 'Voice mode needs extra packages. Install them with:  pip install -e ".[voice]"'
+MISSING_PACKAGES = 'Voice mode needs extra packages. Install them with:  pip install -e ".[all]"'
 
 
 def _start_speaker(settings: Settings) -> Any:
@@ -61,6 +62,12 @@ def run_voice_chat(conversation: Conversation, settings: Settings) -> int:
         from jarvis.stt import STTError, Transcriber, add_nvidia_dll_directories
     except ImportError as exc:
         print(f"{MISSING_PACKAGES}\n({exc})", file=sys.stderr)
+        return 2
+    # Checked without importing, so a missing package gets the install hint
+    # instead of a confusing "could not load the speech model".
+    missing = [name for name in ("faster_whisper", "sounddevice", "pynput") if find_spec(name) is None]
+    if missing:
+        print(f"{MISSING_PACKAGES}\n(missing: {', '.join(missing)})", file=sys.stderr)
         return 2
 
     add_nvidia_dll_directories()
