@@ -14,7 +14,7 @@ from jarvis.chat import Conversation
 from jarvis.config import Settings, load_settings
 from jarvis.llm import LLMError, OllamaClient
 from jarvis.memory import FactExtractor, Memory, MemoryStore
-from jarvis.persona import build_system_prompt
+from jarvis.persona import NO_ACTION_NOTE, build_system_prompt
 from jarvis.tasks import default_tools
 from jarvis.tools import ToolBox, ToolCall
 
@@ -59,6 +59,7 @@ def build_conversation(settings: Settings, client: OllamaClient, memory: Memory 
         on_exchange=memory.observe if memory else None,
         toolbox=build_toolbox(settings),
         on_tool=announce_tool,
+        no_action_note=NO_ACTION_NOTE,
     )
 
 

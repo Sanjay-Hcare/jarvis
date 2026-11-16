@@ -31,6 +31,7 @@ class Conversation:
         on_exchange: Callable[[str, str], None] | None = None,
         toolbox: ToolBox | None = None,
         on_tool: Callable[[ToolCall, str], None] | None = None,
+        no_action_note: str = "",
     ) -> None:
         if max_turns < 1:
             raise ValueError("max_turns must be at least 1")
@@ -41,6 +42,7 @@ class Conversation:
         self._on_exchange = on_exchange
         self._toolbox = toolbox
         self._on_tool = on_tool
+        self._no_action_note = no_action_note
         self._history: list[Message] = []
 
     @property
@@ -81,7 +83,7 @@ class Conversation:
     def _reply(self, messages: list[Message], text: str) -> Iterator[str]:
         tools = self._toolbox.relevant(text) if self._toolbox else []
         if not tools:
-            yield from self._stream_text(messages)
+            yield from self._stream_text(self._with_no_action_note(messages))
             return
 
         # With tools on offer the first answer is collected rather than
@@ -103,7 +105,7 @@ class Conversation:
             if answer and not answer.startswith("{"):
                 yield answer
             else:
-                yield from self._stream_text(messages)
+                yield from self._stream_text(self._with_no_action_note(messages))
             return
 
         messages = [
@@ -124,6 +126,21 @@ class Conversation:
         # The follow-up is asked without tools, so the model reports the
         # result instead of calling something else.
         yield from self._stream_text(messages)
+
+    def _with_no_action_note(self, messages: list[Message]) -> list[Message]:
+        """Remind the model, right before it answers, that nothing was done this turn.
+
+        Without this a small model cheerfully reports "Email sent" for requests
+        it has no way to carry out. A note next to the question works where an
+        instruction in the system prompt does not.
+        """
+        if not self._no_action_note:
+            return messages
+        # Attached to the user's message itself: a separate system message
+        # after it breaks the turn order the model was trained on.
+        last = messages[-1]
+        noted = {**last, "content": f"{last['content']}\n\n[{self._no_action_note}]"}
+        return [*messages[:-1], noted]
 
     def _stream_text(self, messages: list[Message]) -> Iterator[str]:
         for item in self._client.stream_chat(messages, temperature=self._temperature):

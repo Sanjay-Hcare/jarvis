@@ -203,3 +203,43 @@ def test_tool_call_written_as_text_is_retried_without_tools():
 
     assert "".join(chat.ask("do you have time")) == "Sure, let's talk."
     assert client.calls[1]["tools"] is None
+
+
+def test_weather_prefers_the_largest_place_and_knows_old_city_names():
+    searched = []
+
+    def fetch(url):
+        if "geocoding" in url:
+            searched.append(url)
+            return {
+                "results": [
+                    {"name": "Hyderabad", "country": "Pakistan", "latitude": 25.4, "longitude": 68.4, "population": 1921275},
+                    {"name": "Hyderabad", "country": "India", "latitude": 17.4, "longitude": 78.5, "population": 6993262},
+                    {"name": "Hyderabad", "country": "Pakistan", "latitude": 30.0, "longitude": 71.0, "population": None},
+                ]
+            }
+        return fake_weather_fetch(url)
+
+    assert get_weather("Hyderabad", fetch=fetch).startswith("Hyderabad, India")
+    get_weather("Bangalore", fetch=fetch)
+    assert "name=Bengaluru" in searched[-1]
+
+
+def test_fire_up_offers_the_app_tool_but_going_for_a_run_does_not():
+    box = ToolBox(default_tools())
+
+    assert names(box.relevant("Fire up paint for me.")) == ["open_app"]
+    assert box.relevant("I usually go for a run in the morning") == []
+
+
+def test_no_action_note_is_sent_but_not_stored_or_used_with_tools():
+    client = ScriptedClient(["I can't do that yet."], [ToolCall("get_time")], ["Nine."])
+    chat = Conversation(client, "sys", toolbox=toolbox_with(lambda: "It is 9:00 AM."), no_action_note="nothing was done")
+
+    assert "".join(chat.ask("send an email")) == "I can't do that yet."
+    assert client.calls[0]["messages"][-1] == {"role": "user", "content": "send an email\n\n[nothing was done]"}
+    assert chat.history[0] == {"role": "user", "content": "send an email"}
+
+    list(chat.ask("what time is it"))
+    # A turn where a tool ran carries no such note.
+    assert all("nothing was done" not in str(m["content"]) for m in client.calls[2]["messages"][-3:])

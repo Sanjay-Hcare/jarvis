@@ -37,6 +37,15 @@ says. Never say you have done something unless a result confirms it; if you \
 cannot do what was asked, say so."""
 
 
+# Sent alongside any message for which no tool was run.
+NO_ACTION_NOTE = """\
+Note: no action was carried out for this message. If it is ordinary \
+conversation or a question, just answer it as usual. If it asks you to do \
+something on the computer or in the world (send, open, play, change, delete, \
+shut down, set, remind...), you have NOT done it and cannot: say plainly that \
+you can't do that yet. Do not say or imply that it was done."""
+
+
 def build_system_prompt(assistant_name: str, user_name: str, facts: list[str] | None = None) -> str:
     """Return the system prompt: personality, then remembered facts about the user."""
     prompt = PERSONA_TEMPLATE.format(assistant_name=assistant_name, user_name=user_name)

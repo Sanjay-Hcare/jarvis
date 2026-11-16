@@ -40,6 +40,22 @@ _WEATHER_CODES = {
 }
 
 
+# Older city names that the geocoder only knows under their current name
+# (searching "Bangalore" otherwise finds a neighbourhood in Karachi).
+_CITY_ALIASES = {
+    "bangalore": "Bengaluru",
+    "bombay": "Mumbai",
+    "madras": "Chennai",
+    "calcutta": "Kolkata",
+    "poona": "Pune",
+    "mysore": "Mysuru",
+    "mangalore": "Mangaluru",
+    "trivandrum": "Thiruvananthapuram",
+    "cochin": "Kochi",
+    "gurgaon": "Gurugram",
+}
+
+
 def _get_json(url: str, attempts: int = 3) -> dict[str, Any]:
     last_error: Exception | None = None
     for attempt in range(attempts):
@@ -57,11 +73,13 @@ def get_weather(city: str = "", home_city: str = "", fetch: Callable[[str], dict
     city = (city or home_city).strip()
     if not city:
         return "Error: no city was given. Ask which city."
-    query = urllib.parse.urlencode({"name": city, "count": 1, "language": "en"})
+    city = _CITY_ALIASES.get(city.lower(), city)
+    query = urllib.parse.urlencode({"name": city, "count": 5, "language": "en"})
     places = fetch(f"https://geocoding-api.open-meteo.com/v1/search?{query}").get("results") or []
     if not places:
         return f"Error: no place called {city} was found."
-    place = places[0]
+    # Several places can share a name; the most populous is almost always the one meant.
+    place = max(places, key=lambda item: item.get("population") or 0)
     query = urllib.parse.urlencode(
         {
             "latitude": place["latitude"],
@@ -185,7 +203,7 @@ def default_tools(home_city: str = "", screenshot_folder: str = "") -> list[Tool
                 "properties": {"app": {"type": "string", "enum": sorted(APPS)}},
                 "required": ["app"],
             },
-            triggers=r"\b(open|launch|start|bring up|pull up)\b",
+            triggers=r"\b(open|launch|start|fire up|bring up|pull up)\b",
         ),
         Tool(
             name="take_screenshot",

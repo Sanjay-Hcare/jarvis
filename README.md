@@ -14,7 +14,7 @@ things for you. It is being built in small, working steps.
 | 2 | Hearing: push-to-talk and speech recognition | Done |
 | 3 | Voice: natural speech, streamed sentence by sentence | Done |
 | 4 | Memory: remembers facts about you between conversations | Done |
-| 5 | Tasks: time, weather, apps, screenshots | Planned |
+| 5 | Tasks: time, weather, apps, screenshots, lock | Done |
 | 6 | Email and calendar | Planned |
 
 ## Requirements
@@ -118,6 +118,36 @@ In text mode: `/memory` lists what it knows, `/remember <fact>` adds a fact,
 `/forget <words>` removes matching facts. Set `remember = false` to turn
 memory off.
 
+## Tasks
+
+Ask in your own words, by voice or by typing:
+
+| Say something like | What happens |
+|---|---|
+| "What time is it?" / "What's the date?" | Reads your computer's clock |
+| "What's the weather in Mumbai?" | Current conditions and today's forecast from [Open-Meteo](https://open-meteo.com) |
+| "Open notepad" / "Launch the calculator" | Opens one of: browser, calculator, command prompt, file explorer, notepad, paint, settings, task manager |
+| "Take a screenshot" | Saves an image to `Pictures/Jarvis` |
+| "Lock my computer" | Locks the screen |
+
+What was actually done is printed in square brackets, for example
+`[open_app: Opened notepad.]`, separately from what the model says.
+
+How it works: the model chooses the tool and its arguments, but a tool is
+only put on offer when your message contains a matching phrase ("open",
+"weather", "screenshot"...). A small local model will otherwise call a tool
+for almost anything, such as checking the time when asked for a joke. Apps
+come from a fixed list, so nothing the model says is run as a command.
+
+When no tool was run, a short note is attached to your message telling the
+model that nothing was done, so that it answers "I can't send email yet"
+rather than "Email sent". This is a strong nudge to a small model, not a
+guarantee: the bracketed line is the only reliable record of what happened.
+A request phrased without one of the trigger words is treated as ordinary
+chat. The weather lookup is the only feature that
+uses the internet; it sends the city name to Open-Meteo. Set `home_city` to
+skip naming a city, or `use_tools = false` to turn tasks off.
+
 ## Settings
 
 Copy `config.example.toml` to `config.toml` and edit it. The most useful
@@ -146,6 +176,8 @@ pytest
 | `jarvis/chat.py` | Conversation history and reply streaming |
 | `jarvis/persona.py` | The assistant's personality and how memory enters the prompt |
 | `jarvis/memory.py` | Fact store, fact extraction and background learning |
+| `jarvis/tools.py` | Tool definitions and the rules for offering them |
+| `jarvis/tasks.py` | The built-in tools |
 | `jarvis/config.py` | Settings from `config.toml` and the environment |
 | `jarvis/stt.py` | Speech to text (faster-whisper, GPU with CPU fallback) |
 | `jarvis/audio.py` | Microphone recording |
