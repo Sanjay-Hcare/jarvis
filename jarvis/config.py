@@ -26,6 +26,13 @@ class Settings:
     max_turns: int = 12
     request_timeout: float = 120.0
 
+    # Voice input
+    stt_model: str = "small"  # faster-whisper model size
+    stt_device: str = "auto"  # auto, cuda or cpu
+    stt_language: str = "en"  # empty string lets Whisper detect the language
+    push_to_talk_key: str = "ctrl_r"  # hold this key while speaking
+    min_record_seconds: float = 0.4  # shorter presses are ignored
+
 
 def load_settings(path: Path | None = None, env: dict[str, str] | None = None) -> Settings:
     """Build settings from defaults, then config.toml, then JARVIS_* environment variables."""
@@ -48,7 +55,12 @@ def load_settings(path: Path | None = None, env: dict[str, str] | None = None) -
             values[field.name] = raw
 
     # Coerce to the declared types so "0.5" from the environment becomes 0.5.
-    casts = {"temperature": float, "max_turns": int, "request_timeout": float}
+    casts = {
+        "temperature": float,
+        "max_turns": int,
+        "request_timeout": float,
+        "min_record_seconds": float,
+    }
     for name, cast in casts.items():
         if name in values:
             values[name] = cast(values[name])

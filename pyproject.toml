@@ -9,6 +9,15 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+voice = [
+    "faster-whisper>=1.1",
+    "numpy>=1.26",
+    "sounddevice>=0.5",
+    "pynput>=1.7",
+    # CUDA libraries for GPU speech recognition; without an NVIDIA GPU the CPU is used.
+    "nvidia-cublas-cu12; platform_system == 'Windows' or platform_system == 'Linux'",
+    "nvidia-cudnn-cu12; platform_system == 'Windows' or platform_system == 'Linux'",
+]
 
 [project.scripts]
 jarvis = "jarvis.__main__:main"

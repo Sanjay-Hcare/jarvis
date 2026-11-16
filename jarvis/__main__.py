@@ -1,7 +1,12 @@
-"""Text chat with the assistant: python -m jarvis"""
+"""Chat with the assistant.
+
+    python -m jarvis           type to it
+    python -m jarvis --voice   hold a key and speak to it
+"""
 
 from __future__ import annotations
 
+import argparse
 import sys
 
 from jarvis.chat import Conversation
@@ -12,7 +17,11 @@ from jarvis.persona import build_system_prompt
 HELP = "Commands: /reset forgets this conversation, /quit exits."
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="jarvis", description="A fast, fully local companion.")
+    parser.add_argument("--voice", action="store_true", help="hold a key and speak instead of typing")
+    args = parser.parse_args(argv)
+
     try:
         settings = load_settings()
     except (ValueError, OSError) as exc:
@@ -31,6 +40,11 @@ def main() -> int:
         max_turns=settings.max_turns,
         temperature=settings.temperature,
     )
+
+    if args.voice:
+        from jarvis.voice import run_voice_chat
+
+        return run_voice_chat(conversation, settings)
 
     name = settings.assistant_name
     print(f"{name} is ready (model: {settings.model}). {HELP}")

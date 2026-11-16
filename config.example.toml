@@ -9,3 +9,10 @@ ollama_host = "http://127.0.0.1:11434"
 temperature = 0.7
 keep_alive = "30m"             # how long the model stays loaded between replies
 max_turns = 12                 # past exchanges remembered within one conversation
+
+# Voice input (python -m jarvis --voice)
+stt_model = "small"           # tiny, base, small, medium: bigger is more accurate, slower
+stt_device = "auto"           # auto uses an NVIDIA GPU when available, otherwise the CPU
+stt_language = "en"           # "" lets Whisper detect the language
+push_to_talk_key = "ctrl_r"   # hold while speaking: ctrl_r, alt_r, f9, ...
+min_record_seconds = 0.4
