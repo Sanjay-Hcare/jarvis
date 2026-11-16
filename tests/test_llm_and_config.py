@@ -51,3 +51,10 @@ def test_system_prompt_uses_both_names():
 
     assert "You are Jarvis" in prompt
     assert "Call the user Sam" in prompt
+
+
+def test_boolean_settings_from_environment(tmp_path):
+    assert load_settings(tmp_path / "none.toml", env={"JARVIS_SPEAK": "false"}).speak is False
+    assert load_settings(tmp_path / "none.toml", env={"JARVIS_SPEAK": "On"}).speak is True
+    with pytest.raises(ValueError):
+        load_settings(tmp_path / "none.toml", env={"JARVIS_SPEAK": "maybe"})

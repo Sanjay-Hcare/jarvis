@@ -14,6 +14,7 @@ voice = [
     "numpy>=1.26",
     "sounddevice>=0.5",
     "pynput>=1.7",
+    "piper-tts>=1.3",
     # CUDA libraries for GPU speech recognition; without an NVIDIA GPU the CPU is used.
     "nvidia-cublas-cu12; platform_system == 'Windows' or platform_system == 'Linux'",
     "nvidia-cudnn-cu12; platform_system == 'Windows' or platform_system == 'Linux'",

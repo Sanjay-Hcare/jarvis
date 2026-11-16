@@ -33,6 +33,23 @@ class Settings:
     push_to_talk_key: str = "ctrl_r"  # hold this key while speaking
     min_record_seconds: float = 0.4  # shorter presses are ignored
 
+    # Voice output
+    speak: bool = True  # speak replies aloud in voice mode
+    tts_voice: str = "en_GB-alan-medium"  # any Piper voice name
+    tts_speed: float = 1.0  # above 1 talks faster
+    voices_dir: str = "data/voices"  # where downloaded voices are kept
+
+
+def _to_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "on"):
+        return True
+    if text in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"Expected true or false, got {value!r}")
+
 
 def load_settings(path: Path | None = None, env: dict[str, str] | None = None) -> Settings:
     """Build settings from defaults, then config.toml, then JARVIS_* environment variables."""
@@ -60,6 +77,8 @@ def load_settings(path: Path | None = None, env: dict[str, str] | None = None) -
         "max_turns": int,
         "request_timeout": float,
         "min_record_seconds": float,
+        "tts_speed": float,
+        "speak": _to_bool,
     }
     for name, cast in casts.items():
         if name in values:

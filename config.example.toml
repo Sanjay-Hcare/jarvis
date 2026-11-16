@@ -16,3 +16,9 @@ stt_device = "auto"           # auto uses an NVIDIA GPU when available, otherwis
 stt_language = "en"           # "" lets Whisper detect the language
 push_to_talk_key = "ctrl_r"   # hold while speaking: ctrl_r, alt_r, f9, ...
 min_record_seconds = 0.4
+
+# Voice output
+speak = true                  # false gives text replies only
+tts_voice = "en_GB-alan-medium"  # any voice from https://rhasspy.github.io/piper-samples/
+tts_speed = 1.0               # above 1 talks faster
+voices_dir = "data/voices"

@@ -12,7 +12,7 @@ things for you. It is being built in small, working steps.
 |---|---|---|
 | 1 | Text chat with a fast local model and a companion personality | Done |
 | 2 | Hearing: push-to-talk and speech recognition | Done |
-| 3 | Voice: natural speech, streamed sentence by sentence | Planned |
+| 3 | Voice: natural speech, streamed sentence by sentence | Done |
 | 4 | Memory: remembers facts about you between conversations | Planned |
 | 5 | Tasks: time, weather, apps, screenshots | Planned |
 | 6 | Email and calendar | Planned |
@@ -57,18 +57,28 @@ python -m jarvis --voice
 
 Hold **Right Ctrl**, speak, and release. Your words are transcribed by
 [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and sent to the
-model; the reply is printed (spoken replies are the next step).
+model. The reply is printed and spoken aloud with
+[Piper](https://github.com/OHF-Voice/piper1-gpl), one sentence at a time, so
+it starts talking before the whole reply has been written. Press the talk key
+while it is speaking to interrupt it.
 
 ```
-Jarvis is listening (speech on cuda). Hold ctrl_r to talk, Ctrl+C to quit.
+Jarvis is listening (speech recognition on cuda, voice en_GB-alan-medium). Hold ctrl_r to talk, Ctrl+C to quit.
 
 You: Hey Jarvis, remind me to call my friend tomorrow at five.   (0.3s)
 Jarvis: ...
 ```
 
-The first run downloads the speech model (about 480 MB); after that it loads
-from disk and needs no network. With an NVIDIA GPU a short sentence is
-transcribed in about 0.3 seconds; without one it falls back to the CPU.
+The first run downloads the speech recognition model (about 480 MB) and the
+voice (about 60 MB); after that both load from disk and need no network. On a
+laptop RTX 4050 a short sentence is transcribed in about 0.3 seconds and the
+reply starts playing about a second after you stop talking. Without an NVIDIA
+GPU, speech recognition falls back to the CPU.
+
+No Right Ctrl key? Set `push_to_talk_key` to another key such as `f9`. To
+change the voice, set `tts_voice` to any name from the
+[Piper voice samples](https://rhasspy.github.io/piper-samples/); set
+`speak = false` for text replies only.
 
 The talk key is watched system-wide while voice mode runs, so it works even
 when another window is in front. Only that one key is checked.
@@ -104,9 +114,12 @@ pytest
 | `jarvis/stt.py` | Speech to text (faster-whisper, GPU with CPU fallback) |
 | `jarvis/audio.py` | Microphone recording |
 | `jarvis/ptt.py` | Push-to-talk key handling |
+| `jarvis/sentences.py` | Cuts the streamed reply into sentences |
+| `jarvis/tts.py` | Text to speech (Piper) with background, interruptible playback |
 | `jarvis/voice.py` | The voice loop |
 | `jarvis/__main__.py` | Command line entry point and text chat |
 
 ## License
 
-MIT
+MIT. The optional voice packages have their own licenses; in particular Piper
+(`piper-tts`) is GPL-3.0.
