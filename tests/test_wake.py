@@ -144,8 +144,16 @@ def test_the_name_is_checked_before_the_beep():
     assert 1.6 <= first_seconds <= 2.2
 
 
-def test_the_first_look_is_trusted_if_the_full_transcript_differs():
+def test_the_full_request_is_kept_even_if_the_name_is_misheard_the_second_time():
     transcripts = iter(["Hey Jarvis, what", "Hey, service what time is it"])
+    frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(1, SPEECH) + seconds(1.5, QUIET)
+    listener = WakeListener(FakeModel(), lambda audio: next(transcripts))
+
+    assert list(listener.commands(iter(frames))) == ["what time is it"]
+
+
+def test_the_first_look_is_used_if_the_full_transcript_has_no_words_after_greetings():
+    transcripts = iter(["Hey Jarvis, what", "Hey."])
     frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(1, SPEECH) + seconds(1.5, QUIET)
     listener = WakeListener(FakeModel(), lambda audio: next(transcripts))
 
@@ -194,3 +202,24 @@ def test_a_second_look_after_an_early_detection_still_wakes():
     listener = WakeListener(model, lambda audio: next(transcripts))
 
     assert list(listener.commands(iter(frames))) == [None, "open YouTube"]
+
+
+@pytest.mark.parametrize(
+    "transcript, command",
+    [
+        ("Hey, Javish. What is the top 5 global news?", "What is the top 5 global news?"),
+        ("Hey Jervis, what time is it?", "what time is it?"),
+        ("OK, hey Garvis open YouTube", "open YouTube"),
+        ("Hey.", None),
+    ],
+)
+def test_once_the_name_is_confirmed_any_spelling_of_it_is_accepted(transcript, command):
+    assert command_after_wake_word(transcript, name_confirmed=True) == command
+
+
+def test_a_respelt_name_in_the_full_transcript_keeps_the_request():
+    transcripts = iter(["Hey Jarvis.", "Hey, Javish. What is the top 5 global news happening right now?"])
+    frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(3, SPEECH) + seconds(1.5, QUIET)
+    listener = WakeListener(FakeModel(), lambda audio: next(transcripts))
+
+    assert list(listener.commands(iter(frames))) == ["What is the top 5 global news happening right now?"]

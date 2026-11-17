@@ -78,18 +78,25 @@ _GREETING_WORDS = frozenset(
 )
 
 
-def command_after_wake_word(transcript: str) -> str | None:
+def command_after_wake_word(transcript: str, name_confirmed: bool = False) -> str | None:
     """Return what was said after "Jarvis", or None if "Jarvis" was not said to it.
 
     Only greeting words may come before the name ("Hey Jarvis", "OK so
     Jarvis"), so a sentence that merely mentions the name ("I think Jarvis
     is a great name") does not count. An empty string means the name was
     said with nothing after it.
+
+    name_confirmed: the name was already recognised in an earlier look at
+    the same audio, so the first word after the greeting is taken to be it
+    however it is spelt this time (one transcription gave "Jarvis", the
+    next "Javish").
     """
     for match in _WORD.finditer(transcript.lower()):
         word = match.group()
-        if _sounds_like_jarvis(word):
-            return transcript[match.end() :].lstrip(" ,.!?;:-").strip()
+        if name_confirmed or _sounds_like_jarvis(word):
+            if not name_confirmed or word not in _GREETING_WORDS:
+                return transcript[match.end() :].lstrip(" ,.!?;:-").strip()
+            continue
         if word not in _GREETING_WORDS:
             return None
     return None
@@ -201,10 +208,8 @@ class WakeListener:
             self._model.reset()
             self._recent.clear()
             transcript = self._transcribe(heard)
-            command = command_after_wake_word(transcript)
+            command = command_after_wake_word(transcript, name_confirmed=True)
             if command is None:
-                # The first look found the name; trust it if the full
-                # transcription words it differently.
                 command = command_after_wake_word(first_look) or ""
             if self._log is not None:
                 self._log(

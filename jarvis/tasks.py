@@ -372,6 +372,9 @@ def default_tools(
         Tool(
             name="get_time",
             description="Get the current local time and date.",
+            # The result is already a spoken sentence; saying it directly
+            # saves a second call to the model.
+            confirmation="{result}",
             run=get_time,
             triggers=r"\b(what(?:'s| is)? (?:the )?(?:time|date|day)|(?:the|current) (?:time|date)\b|"
             r"what day|which day|today'?s date|date today|time is it|time now)",
