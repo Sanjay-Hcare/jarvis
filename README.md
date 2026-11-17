@@ -87,6 +87,15 @@ setting `user_name`.
 
 ## Voice
 
+- **Hands-free (new).** `python -m jarvis --wake`, or `wake_word = true` in
+  `config.toml`: say "Hey Jarvis" and then your request, in one go or after
+  the beep. Saying it while Jarvis is talking interrupts it. Two checks keep
+  false wake-ups down: [openWakeWord](https://github.com/dscripka/openWakeWord)
+  listens for something that sounds like "Hey Jarvis", then the words are
+  transcribed and Jarvis only answers if its name was really said at the
+  start ("Hey Travis" and "I think Jarvis is a great name" are ignored). The
+  microphone stays open in this mode, but nothing is recorded or kept until
+  the wake word is heard, and nothing leaves the computer.
 - **Talk key.** `push_to_talk_key` in `config.toml`; use `f9` or `alt_r` if
   your keyboard has no Right Ctrl. The key is watched system-wide while voice
   mode runs, so it works when another window is in front. Only that one key
@@ -222,6 +231,7 @@ calendar, so they run anywhere in under a second.
 | `jarvis/stt.py` | Speech to text (GPU with CPU fallback) |
 | `jarvis/audio.py` | Microphone recording |
 | `jarvis/ptt.py` | Push-to-talk key handling |
+| `jarvis/wake.py` | "Hey Jarvis" detection and recording the request that follows |
 | `jarvis/sentences.py` | Cuts the streamed reply into sentences |
 | `jarvis/tts.py` | Text to speech with background, interruptible playback |
 | `jarvis/config.py` | Settings from `config.toml` and the environment |

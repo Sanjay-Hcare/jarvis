@@ -16,6 +16,10 @@ stt_device = "auto"           # auto uses an NVIDIA GPU when available, otherwis
 stt_language = "en"           # "" lets Whisper detect the language
 push_to_talk_key = "ctrl_r"   # hold while speaking: ctrl_r, alt_r, f9, ...
 min_record_seconds = 0.4
+wake_word = false             # true: say "Hey Jarvis" instead of holding the key (same as --wake)
+wake_threshold = 0.5          # higher means fewer false wake-ups but more misses
+wake_beep = true              # short tone when it starts listening
+wake_models_dir = "data/wakeword"
 
 # Voice output
 speak = true                  # false gives text replies only

@@ -2,6 +2,7 @@
 
     python -m jarvis           type to it
     python -m jarvis --voice   hold a key and speak to it
+    python -m jarvis --wake    say "Hey Jarvis" and speak to it
 """
 
 from __future__ import annotations
@@ -143,6 +144,7 @@ def run_text_chat(conversation: Conversation, settings: Settings, memory: Memory
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="jarvis", description="A fast, fully local companion.")
     parser.add_argument("--voice", action="store_true", help="hold a key and speak instead of typing")
+    parser.add_argument("--wake", action="store_true", help='voice mode, started by saying "Hey Jarvis" instead of a key')
     args = parser.parse_args(argv)
 
     try:
@@ -167,10 +169,10 @@ def main(argv: list[str] | None = None) -> int:
     conversation = build_conversation(settings, client, memory)
 
     try:
-        if args.voice:
+        if args.voice or args.wake:
             from jarvis.voice import run_voice_chat
 
-            return run_voice_chat(conversation, settings)
+            return run_voice_chat(conversation, settings, wake_word=args.wake or settings.wake_word)
         return run_text_chat(conversation, settings, memory)
     finally:
         if memory is not None:

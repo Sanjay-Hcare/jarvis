@@ -32,6 +32,10 @@ class Settings:
     stt_language: str = "en"  # empty string lets Whisper detect the language
     push_to_talk_key: str = "ctrl_r"  # hold this key while speaking
     min_record_seconds: float = 0.4  # shorter presses are ignored
+    wake_word: bool = False  # voice mode starts with "Hey Jarvis" instead of the key
+    wake_threshold: float = 0.5  # 0 to 1; higher means fewer false wake-ups but more misses
+    wake_beep: bool = True  # short tone when it starts listening
+    wake_models_dir: str = "data/wakeword"
 
     # Voice output
     speak: bool = True  # speak replies aloud in voice mode
@@ -98,6 +102,9 @@ def load_settings(path: Path | None = None, env: dict[str, str] | None = None) -
         "speak": _to_bool,
         "remember": _to_bool,
         "use_tools": _to_bool,
+        "wake_word": _to_bool,
+        "wake_beep": _to_bool,
+        "wake_threshold": float,
         "email_recent_days": int,
         "max_facts": int,
     }
