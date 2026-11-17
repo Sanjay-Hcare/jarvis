@@ -33,9 +33,12 @@ class Settings:
     push_to_talk_key: str = "ctrl_r"  # hold this key while speaking
     min_record_seconds: float = 0.4  # shorter presses are ignored
     wake_word: bool = False  # voice mode starts with "Hey Jarvis" instead of the key
-    wake_threshold: float = 0.5  # 0 to 1; higher means fewer false wake-ups but more misses
+    wake_threshold: float = 0.2  # 0 to 1; lower notices more attempts (each is checked for the name)
     wake_beep: bool = True  # short tone when it starts listening
     wake_models_dir: str = "data/wakeword"
+    # Path of a diagnostic log for wake-word listening; empty means off.
+    # It records what was heard, so leave it off unless troubleshooting.
+    debug_log: str = ""
 
     # Voice output
     speak: bool = True  # speak replies aloud in voice mode

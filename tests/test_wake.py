@@ -74,7 +74,7 @@ def test_command_is_recorded_until_the_speaker_stops():
 
     assert commands == ["what time is it?"]
     assert woke == [True] and model.resets == 1
-    duration = len(heard[0]) / 16000
+    duration = len(heard[-1]) / 16000
     # 1.6 s of audio from before the wake word, the 1.5 s command and the
     # 1 s of quiet that ended it; the later speech is not included.
     assert 3.9 <= duration <= 4.3
@@ -86,7 +86,7 @@ def test_a_short_pause_does_not_end_the_command():
     _commands, heard, _woke, _model = listen(iter(frames))
 
     # Both halves of the request are kept.
-    assert len(heard[0]) / 16000 >= 1.6 + 1 + 0.6 + 1
+    assert len(heard[-1]) / 16000 >= 1.6 + 1 + 0.6 + 1
 
 
 def test_the_audio_passed_on_is_float_in_range():
@@ -94,8 +94,8 @@ def test_the_audio_passed_on_is_float_in_range():
 
     _commands, heard, _woke, _model = listen(iter(frames))
 
-    assert heard[0].dtype == np.float32
-    assert 0 < np.abs(heard[0]).max() <= 1
+    assert all(audio.dtype == np.float32 for audio in heard)
+    assert 0 < np.abs(heard[-1]).max() <= 1
 
 
 def test_waiting_for_a_command_gives_up():
@@ -104,7 +104,7 @@ def test_waiting_for_a_command_gives_up():
     commands, heard, _woke, _model = listen(iter(frames), transcript="Hey Jarvis", start_timeout=2)
 
     assert commands == [""]
-    assert len(heard[0]) / 16000 <= 1.6 + 2.1
+    assert len(heard[-1]) / 16000 <= 1.6 + 2.1
 
 
 def test_a_long_command_is_cut_off():
@@ -112,15 +112,44 @@ def test_a_long_command_is_cut_off():
 
     _commands, heard, _woke, _model = listen(iter(frames), max_seconds=5)
 
-    assert len(heard[0]) / 16000 <= 5.1
+    assert len(heard[-1]) / 16000 <= 5.1
 
 
 def test_false_wake_ups_are_reported_as_none():
     frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(1, SPEECH) + seconds(1, QUIET)
 
-    commands, _heard, _woke, _model = listen(iter(frames), transcript="Hey Travis, what's up?")
+    commands, heard, woke, model = listen(iter(frames), transcript="Hey Travis, what's up?")
 
     assert commands == [None]
+    # Rejected on the first look, before any beep and without recording on.
+    assert woke == [] and len(heard) == 1
+    assert len(heard[0]) / 16000 <= 1.6 + 0.6
+
+
+def test_the_name_is_checked_before_the_beep():
+    events = []
+    model = FakeModel()
+
+    def transcribe(audio):
+        events.append(("transcribe", round(len(audio) / 16000, 1)))
+        return "Hey Jarvis, what time is it?"
+
+    frames = seconds(2, QUIET) + [frame(SPEECH, wake=True)] + seconds(1, SPEECH) + seconds(1.5, QUIET)
+    listener = WakeListener(model, transcribe, on_wake=lambda: events.append(("beep",)))
+
+    assert list(listener.commands(iter(frames))) == ["what time is it?"]
+    (first, first_seconds), beep, (second, _) = events
+    assert (first, beep, second) == ("transcribe", ("beep",), "transcribe")
+    # The first look covers the moments before the detection plus the end of the name.
+    assert 1.6 <= first_seconds <= 2.2
+
+
+def test_the_first_look_is_trusted_if_the_full_transcript_differs():
+    transcripts = iter(["Hey Jarvis, what", "Hey, service what time is it"])
+    frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(1, SPEECH) + seconds(1.5, QUIET)
+    listener = WakeListener(FakeModel(), lambda audio: next(transcripts))
+
+    assert list(listener.commands(iter(frames))) == ["what"]
 
 
 def test_no_wake_word_means_nothing_happens():
@@ -140,3 +169,28 @@ def test_models_are_downloaded_once(tmp_path):
     ensure_wake_models(tmp_path, download=download)
 
     assert fetched == ["melspectrogram.onnx", "embedding_model.onnx", "hey_jarvis_v0.1.onnx"]
+
+
+
+def test_a_sound_that_keeps_firing_is_not_checked_on_every_frame():
+    class AlwaysFires(FakeModel):
+        def score(self, frame):
+            return 1.0
+
+    checks = []
+    listener = WakeListener(AlwaysFires(), lambda audio: checks.append(1) or "Hey Travis")
+
+    results = list(listener.commands(iter(seconds(4, SPEECH))))
+
+    # Each check uses 0.5 s of new audio and is followed by a 0.3 s pause.
+    assert results == [None] * len(checks)
+    assert 4 <= len(checks) <= 6
+
+
+def test_a_second_look_after_an_early_detection_still_wakes():
+    transcripts = iter(["Hey Jar", "Hey Jarvis, open YouTube", "Hey Jarvis, open YouTube"])
+    model = FakeModel()
+    frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(1.0, SPEECH) + [frame(SPEECH, wake=True)] + seconds(1, SPEECH) + seconds(1.5, QUIET)
+    listener = WakeListener(model, lambda audio: next(transcripts))
+
+    assert list(listener.commands(iter(frames))) == [None, "open YouTube"]

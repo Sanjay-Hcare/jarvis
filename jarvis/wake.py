@@ -95,9 +95,18 @@ def command_after_wake_word(transcript: str) -> str | None:
     return None
 
 
+# Audio kept after a detection before checking the name, so all of "Jarvis" is in it.
+NAME_TAIL_SECONDS = 0.5
+# After a check that did not find the name, wait this long before checking again.
+RECHECK_PAUSE_SECONDS = 0.3
+
+
 @dataclass
 class ListenSettings:
-    threshold: float = 0.5  # wake-word score that counts as a detection
+    # Wake-word score that triggers the name check. Synthetic voices score
+    # 1.0, but a real voice reached only 0.27; the name check behind it keeps
+    # a low threshold from causing false wake-ups.
+    threshold: float = 0.2
     pre_roll_seconds: float = 1.6  # audio kept from before the detection
     start_timeout: float = 6.0  # how long to wait for a command to begin
     end_silence: float = 1.0  # this much quiet after speech ends the command
@@ -123,12 +132,18 @@ class WakeListener:
         settings: ListenSettings | None = None,
         on_wake: Callable[[], None] | None = None,
         is_speaking: Callable[[], bool] = lambda: False,
+        log: Callable[[str], None] | None = None,
     ) -> None:
         self._model = model
         self._transcribe = transcribe
         self._settings = settings or ListenSettings()
         self._on_wake = on_wake
         self._is_speaking = is_speaking
+        # For diagnosing "it doesn't react": loudness and near-misses.
+        self._log = log
+        self._window_levels: list[float] = []
+        self._window_best = 0.0
+        self._cooldown = 0
         frames = round(self._settings.pre_roll_seconds / FRAME_SECONDS)
         self._recent: deque[np.ndarray] = deque(maxlen=frames)
         # Recent background levels, for telling speech from room noise.
@@ -143,18 +158,75 @@ class WakeListener:
         frames = iter(frames)
         for frame in frames:
             self._recent.append(frame)
+            level = _level(frame)
             if not self._is_speaking():
                 # Its own voice from the speakers is not background noise.
-                self._background.append(_level(frame))
-            if self._model.score(frame) < self._settings.threshold:
+                self._background.append(level)
+            score = self._model.score(frame)
+            self._note(level, score)
+            if self._cooldown:
+                self._cooldown -= 1
+                continue
+            if score < self._settings.threshold:
+                continue
+
+            speech_level = self._speech_level()
+            # Let the end of the name finish sounding, then check that it was
+            # really "Jarvis" before beeping. The detector is kept sensitive,
+            # because real voices score far lower than the synthetic voices
+            # it was trained on, so a false trigger must stay silent.
+            lead = list(self._recent)
+            tail = 0
+            while tail < round(NAME_TAIL_SECONDS / FRAME_SECONDS):
+                extra = next(frames, None)
+                if extra is None:
+                    break
+                lead.append(extra)
+                tail += 1
+            first_look = self._transcribe(_as_float(lead))
+            if command_after_wake_word(first_look) is None:
+                if self._log is not None:
+                    self._log(f"near miss (score {score:.2f}): heard {first_look!r}; ignored")
+                # The detector may have fired before the name was finished, so
+                # the audio and the detector's state are kept for another look;
+                # a pause stops it from checking the same moment over and over.
+                self._recent.extend(lead[len(lead) - tail :])
+                self._cooldown = round(RECHECK_PAUSE_SECONDS / FRAME_SECONDS)
+                yield None
                 continue
 
             if self._on_wake is not None:
                 self._on_wake()
-            heard = self._record_command(frames)
+            heard = self._record_command(frames, lead, waited=tail, speech_level=speech_level)
             self._model.reset()
             self._recent.clear()
-            yield command_after_wake_word(self._transcribe(heard))
+            transcript = self._transcribe(heard)
+            command = command_after_wake_word(transcript)
+            if command is None:
+                # The first look found the name; trust it if the full
+                # transcription words it differently.
+                command = command_after_wake_word(first_look) or ""
+            if self._log is not None:
+                self._log(
+                    f"woke (score {score:.2f}); recorded {len(heard) / 16000:.1f}s with speech level "
+                    f"{speech_level:.4f}; heard {transcript!r}; request: {command!r}"
+                )
+            yield command
+
+    def _note(self, level: float, score: float) -> None:
+        """Every five seconds, log how loud the microphone was and the best wake score."""
+        if self._log is None:
+            return
+        self._window_levels.append(level)
+        self._window_best = max(self._window_best, score)
+        if len(self._window_levels) * FRAME_SECONDS < 5:
+            return
+        levels = np.array(self._window_levels)
+        self._log(
+            f"microphone: quiet {np.percentile(levels, 20):.4f}, loudest {levels.max():.4f}; "
+            f"best wake score {self._window_best:.2f} (needs {self._settings.threshold:.2f})"
+        )
+        self._window_levels, self._window_best = [], 0.0
 
     def _speech_level(self) -> float:
         if not self._background:
@@ -162,14 +234,18 @@ class WakeListener:
         quiet = float(np.percentile(np.array(self._background), 20))
         return max(quiet * 3, self._settings.min_level)
 
-    def _record_command(self, frames: Iterator[np.ndarray]) -> np.ndarray:
-        """Collect the wake word plus what follows, until the speaker stops."""
+    def _record_command(
+        self, frames: Iterator[np.ndarray], collected: list[np.ndarray], waited: int, speech_level: float
+    ) -> np.ndarray:
+        """Collect the wake word plus what follows, until the speaker stops.
+
+        collected already holds the audio up to now, and waited the number
+        of frames since the detection.
+        """
         settings = self._settings
-        speech_level = self._speech_level()
-        collected = list(self._recent)
+        collected = list(collected)
         started = False
         quiet_frames = 0
-        waited = 0
         end_quiet = round(settings.end_silence / FRAME_SECONDS)
         start_limit = round(settings.start_timeout / FRAME_SECONDS)
         total_limit = round(settings.max_seconds / FRAME_SECONDS)
@@ -191,4 +267,9 @@ class WakeListener:
                 break
             if len(collected) >= total_limit:
                 break
-        return np.concatenate(collected).astype(np.float32) / 32768.0 if collected else np.zeros(0, np.float32)
+        return _as_float(collected)
+
+
+def _as_float(frames: list[np.ndarray]) -> np.ndarray:
+    """Join 16-bit frames into the float audio that speech recognition takes."""
+    return np.concatenate(frames).astype(np.float32) / 32768.0 if frames else np.zeros(0, np.float32)

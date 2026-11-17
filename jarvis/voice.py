@@ -62,6 +62,15 @@ def _answer(conversation: Conversation, text: str, name: str, speaker: Any) -> N
         print(f"\n[{exc}]", file=sys.stderr)
 
 
+def _default_microphone() -> str:
+    try:
+        import sounddevice as sd
+
+        return str(sd.query_devices(kind="input")["name"])
+    except Exception as exc:
+        return f"unknown ({exc})"
+
+
 def _beep() -> None:
     """A short, quiet tone that says "I'm listening"."""
     try:
@@ -183,12 +192,26 @@ def _wake_word_loop(conversation: Conversation, settings: Settings, transcriber:
         if settings.wake_beep:
             _beep()
 
+    log = None
+    if settings.debug_log:
+        # Contains what was heard, so it is only written when asked for.
+        log_path = Path(settings.debug_log)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        def log(line: str) -> None:
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"{time.strftime('%H:%M:%S')} {line}\n")
+
+        log(f"--- started; microphone: {_default_microphone()}; wake threshold {settings.wake_threshold}")
+        print(f"[diagnostic log on: {log_path}]")
+
     listener = WakeListener(
         model,
         transcriber.transcribe,
         ListenSettings(threshold=settings.wake_threshold),
         on_wake=on_wake,
         is_speaking=lambda: bool(speaker is not None and speaker.speaking),
+        log=log,
     )
     name = settings.assistant_name
     try:
@@ -196,8 +219,7 @@ def _wake_word_loop(conversation: Conversation, settings: Settings, transcriber:
             print(f'{name} is listening ({status}). Say "Hey {name}" and then your request. Ctrl+C to quit.')
             for command in listener.commands(mic.frames()):
                 if command is None:
-                    # The detector fired, but the name was not actually said.
-                    print("\r" + " " * 20 + "\r", end="", flush=True)
+                    # Something sounded like the name but was not; stay quiet.
                     continue
                 if not command:
                     print("\r[heard my name, but no request]")
