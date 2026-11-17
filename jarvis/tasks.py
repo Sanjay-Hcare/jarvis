@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import os
+import re
 import subprocess
 import time
 import urllib.error
@@ -105,9 +107,12 @@ def get_weather(city: str = "", home_city: str = "", fetch: Callable[[str], dict
 
 # --- apps -------------------------------------------------------------------
 
-# Only these can be opened. Each entry is a fixed command or address, so
-# nothing the model says is ever passed to a shell.
-APPS: dict[str, list[str] | str] = {
+# Only these can be opened. Each entry is a fixed command, address or program
+# name, so nothing the model says is ever passed to a shell.
+#   list           a command run directly
+#   "x:" / "http"  a Windows address or a website, opened by the system
+#   "name.exe"     an installed program, offered only if it is found
+BUILT_IN_APPS: dict[str, list[str] | str] = {
     "notepad": ["notepad.exe"],
     "calculator": ["calc.exe"],
     "file explorer": ["explorer.exe"],
@@ -115,17 +120,94 @@ APPS: dict[str, list[str] | str] = {
     "task manager": ["taskmgr.exe"],
     "command prompt": ["cmd.exe"],
     "settings": "ms-settings:",
+    "camera": "microsoft.windows.camera:",
+    "clock": "ms-clock:",
+    "photos": "ms-photos:",
+}
+PROGRAMS: dict[str, str] = {
+    "chrome": "chrome.exe",
+    "edge": "msedge.exe",
+    "firefox": "firefox.exe",
+    "word": "winword.exe",
+    "excel": "excel.exe",
+    "powerpoint": "powerpnt.exe",
+    "outlook": "outlook.exe",
+    "vs code": "code.exe",
+    "vlc": "vlc.exe",
+    "spotify": "spotify.exe",
+    "teams": "ms-teams.exe",
+}
+WEBSITES: dict[str, str] = {
     "browser": "https://www.google.com",
+    "youtube": "https://www.youtube.com",
+    "gmail": "https://mail.google.com",
+    "google calendar": "https://calendar.google.com",
+    "github": "https://github.com",
+    "whatsapp": "https://web.whatsapp.com",
+}
+# Other ways people (and the model) name the same thing.
+APP_ALIASES = {
+    "google chrome": "chrome",
+    "microsoft edge": "edge",
+    "visual studio code": "vs code",
+    "vscode": "vs code",
+    "code": "vs code",
+    "microsoft word": "word",
+    "microsoft excel": "excel",
+    "explorer": "file explorer",
+    "files": "file explorer",
+    "cmd": "command prompt",
+    "terminal": "command prompt",
+    "calc": "calculator",
+    "google": "browser",
+    "web browser": "browser",
+    "internet": "browser",
+    "mail": "gmail",
+    "you tube": "youtube",
 }
 
 
-def open_app(app: str = "", launch: Callable[[list[str] | str], None] | None = None) -> str:
-    name = app.strip().lower()
-    target = APPS.get(name)
+@functools.lru_cache(maxsize=None)
+def program_installed(exe: str) -> bool:
+    """True when Windows can start exe by name (App Paths registry or PATH)."""
+    import shutil
+
+    if shutil.which(exe):
+        return True
+    try:
+        import winreg
+    except ImportError:
+        return False
+    for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        try:
+            with winreg.OpenKey(root, rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exe}"):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def available_apps(is_installed: Callable[[str], bool] = program_installed) -> dict[str, list[str] | str]:
+    """Everything that can be opened on this computer, by spoken name."""
+    apps: dict[str, list[str] | str] = dict(WEBSITES)
+    if os.name == "nt":
+        apps.update(BUILT_IN_APPS)
+        apps.update({name: exe for name, exe in PROGRAMS.items() if is_installed(exe)})
+    return dict(sorted(apps.items()))
+
+
+def open_app(
+    app: str = "",
+    apps: dict[str, list[str] | str] | None = None,
+    launch: Callable[[list[str] | str], None] | None = None,
+) -> str:
+    apps = available_apps() if apps is None else apps
+    name = " ".join(app.lower().replace("-", " ").split())
+    name = APP_ALIASES.get(name, name)
+    target = apps.get(name)
     if target is None:
-        return f"Error: I can only open {', '.join(sorted(APPS))}."
-    if os.name != "nt" and name != "browser":
-        return "Error: opening apps is only supported on Windows."
+        # Kept short because it is spoken; the full list is in the README.
+        return f"Error: {app or 'that'} is not one of the apps I can open."
     (launch or _launch)(target)
     return f"Opened {name}."
 
@@ -138,7 +220,88 @@ def _launch(target: list[str] | str) -> None:
     elif target.startswith("http"):
         webbrowser.open_new_tab(target)
     else:
-        os.startfile(target)  # noqa: S606 - fixed ms-settings: address from APPS
+        # A fixed Windows address or program name from the lists above;
+        # the shell finds installed programs through the App Paths registry.
+        os.startfile(target)  # noqa: S606
+
+
+# --- volume -----------------------------------------------------------------
+
+VOLUME_STEP = 10
+
+
+class WindowsMixer:
+    """The default speakers' master volume, through the Windows Core Audio API."""
+
+    def __init__(self) -> None:
+        try:
+            import comtypes
+            from pycaw.pycaw import AudioUtilities
+        except ImportError as exc:
+            raise RuntimeError('volume control needs the pycaw package (pip install -e ".[tasks]")') from exc
+        # Safe to repeat; needed when called from a thread other than the main one.
+        comtypes.CoInitialize()
+        self._endpoint = AudioUtilities.GetSpeakers().EndpointVolume
+
+    def get(self) -> int:
+        return round(self._endpoint.GetMasterVolumeLevelScalar() * 100)
+
+    def set(self, percent: int) -> None:
+        self._endpoint.SetMasterVolumeLevelScalar(percent / 100, None)
+
+    def muted(self) -> bool:
+        return bool(self._endpoint.GetMute())
+
+    def mute(self, on: bool) -> None:
+        self._endpoint.SetMute(1 if on else 0, None)
+
+
+_CHANGES = {
+    "up": "up", "louder": "up", "increase": "up", "raise": "up", "higher": "up",
+    "down": "down", "lower": "down", "quieter": "down", "softer": "down", "decrease": "down", "reduce": "down",
+    "mute": "mute", "silence": "mute", "off": "mute",
+    "unmute": "unmute", "on": "unmute",
+    "set": "set", "to": "set",
+}
+
+
+def set_volume(change: str = "", level: Any = None, mixer: Any = None) -> str:
+    """Turn the volume up or down, set it to a percentage, or mute it."""
+    action = _CHANGES.get(str(change).strip().lower(), "")
+    percent = None
+    if level not in (None, ""):
+        digits = re.search(r"\d+", str(level))
+        if digits is None:
+            return f"Error: {level} is not a volume level."
+        percent = max(0, min(100, int(digits.group())))
+        # A level only matters when setting one. With "up" or "down" a small
+        # model often fills one in anyway ("quieter" arrived as down + 50),
+        # and obeying it would jump the volume instead of stepping it.
+        if action in ("", "set"):
+            action = "set"
+    if not action or (action == "set" and percent is None):
+        return "Error: say whether to turn the volume up, down, mute it, or set it to a percentage."
+    if os.name != "nt" and mixer is None:
+        return "Error: volume control is only supported on Windows."
+
+    mixer = mixer or WindowsMixer()
+    if action == "mute":
+        mixer.mute(True)
+        return "Muted."
+    current = mixer.get()
+    target = {
+        "up": current + VOLUME_STEP,
+        "down": current - VOLUME_STEP,
+        "set": percent,
+        "unmute": current,
+    }[action]
+    target = max(0, min(100, target))
+    if action != "unmute":
+        mixer.set(target)
+    if action != "down" and mixer.muted():
+        # Asking for sound means wanting to hear it.
+        mixer.mute(False)
+    return f"Volume is now {target}%."
 
 
 # --- screenshot -------------------------------------------------------------
@@ -182,7 +345,10 @@ def default_tools(
     imap_host: str = "imap.gmail.com",
     keyring_service: str = "jarvis",
     email_recent_days: int = 2,
+    apps: dict[str, list[str] | str] | None = None,
 ) -> list[Tool]:
+    # Looked up once, so the model is only ever offered apps that exist here.
+    apps = available_apps() if apps is None else apps
     return [
         Tool(
             name="check_email",
@@ -224,28 +390,58 @@ def default_tools(
         ),
         Tool(
             name="open_app",
-            description="Open an application on the user's computer.",
+            description="Open an application or a website on the user's computer.",
             confirmation="Done, it's open.",
-            run=open_app,
+            run=lambda app="": open_app(app, apps),
             parameters={
                 "type": "object",
-                "properties": {"app": {"type": "string", "enum": sorted(APPS)}},
+                "properties": {"app": {"type": "string", "enum": list(apps)}},
                 "required": ["app"],
             },
-            triggers=r"\b(open|launch|start|fire up|bring up|pull up)\b",
+            command=True,
+            triggers=r"(?:open|launch|start|fire up|bring up|pull up|go to)\b",
+        ),
+        Tool(
+            name="set_volume",
+            description=(
+                "Change the computer's sound volume: turn it up or down a step, "
+                "set it to a percentage, mute or unmute."
+            ),
+            confirmation="{result}",
+            run=set_volume,
+            parameters={
+                "type": "object",
+                "properties": {
+                    "change": {"type": "string", "enum": ["up", "down", "set", "mute", "unmute"]},
+                    "level": {"type": "integer", "description": "0 to 100, only when setting a percentage"},
+                },
+                "required": ["change"],
+            },
+            command=True,
+            triggers=(
+                # "turn the volume up", "make it louder", "set the sound to 30"
+                r"(?:turn|set|change|put|bring|crank|make|raise|increase|decrease|reduce|lower)\b"
+                r".*\b(?:volume|sound|music|audio|louder|quieter|softer)\b"
+                r"|turn (?:it|that) (?:up|down)\b"
+                r"|(?:volume|sound) (?:up|down|to|at)\b"
+                r"|(?:un)?mute\b"
+                r"|(?:louder|quieter|softer)\b"
+            ),
         ),
         Tool(
             name="take_screenshot",
             description="Take a screenshot of the user's screen and save it as an image file.",
             confirmation="Screenshot saved.",
             run=lambda: take_screenshot(screenshot_folder),
-            triggers=r"\b(screen ?shot|capture (?:my |the )?screen|screen capture|snip)\b",
+            command=True,
+            triggers=r"(?:take|grab|capture|get|save|make)\b.*\b(?:screen ?shot|screen)\b|screen ?shot\b|snip\b",
         ),
         Tool(
             name="lock_computer",
             description="Lock the user's computer screen.",
             confirmation="Locked.",
             run=lock_computer,
-            triggers=r"\block (?:my |the |this )?(?:computer|pc|laptop|screen|system|machine)\b|\block it\b",
+            command=True,
+            triggers=r"lock (?:my |the |this )?(?:computer|pc|laptop|screen|system|machine|it|up)\b",
         ),
     ]

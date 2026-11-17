@@ -9,7 +9,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
-tasks = ["pillow>=10"]  # screenshots
+tasks = ["pillow>=10", "pycaw>=20240210; platform_system == 'Windows'"]  # screenshots, volume
 accounts = ["keyring>=24"]  # email and calendar
 all = ["jarvis[voice,tasks,accounts]"]
 voice = [

@@ -90,24 +90,19 @@ class Conversation:
 
         # With tools on offer the first answer is collected rather than
         # streamed: it is usually a tool call, which has no text to show.
-        calls: list[ToolCall] = []
-        said: list[str] = []
-        for item in self._client.stream_chat(
-            messages, temperature=self._temperature, tools=[tool.schema() for tool in tools]
-        ):
-            if isinstance(item, ToolCall):
-                calls.append(item)
-            else:
-                said.append(item)
+        # Choosing a tool is done at temperature 0, so the same request gets
+        # the same decision every time.
+        calls = [
+            item
+            for item in self._client.stream_chat(messages, temperature=0, tools=[tool.schema() for tool in tools])
+            if isinstance(item, ToolCall)
+        ]
 
         if not calls:
-            answer = "".join(said).strip()
-            # Small models sometimes write a tool call out as text instead of
-            # making it. That is not a reply; answer again without tools.
-            if answer and not answer.startswith("{"):
-                yield answer
-            else:
-                yield from self._stream_text(self._with_no_action_note(messages))
+            # The model chose not to use a tool (or wrote a tool call out as
+            # text). Whatever it said was written without knowing that nothing
+            # was done, and may claim otherwise, so ask again with the note.
+            yield from self._stream_text(self._with_no_action_note(messages))
             return
 
         results = []
@@ -123,7 +118,7 @@ class Conversation:
                 detail = result[len(ERROR_PREFIX) :].strip()
                 fixed_replies.append(f"Sorry, that didn't work: {detail}")
             else:
-                fixed_replies.append(self._toolbox.confirmation(call.name))
+                fixed_replies.append(self._toolbox.confirmation(call.name, result))
         if all(fixed_replies):
             yield " ".join(fixed_replies)
             return

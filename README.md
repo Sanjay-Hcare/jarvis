@@ -48,7 +48,7 @@ model: they show what was really looked up, done or remembered.
 | **Talk** | Push-to-talk; replies are spoken sentence by sentence as they are generated, and you can interrupt by pressing the key again |
 | **Remember** | Learns lasting facts about you and uses them in later conversations |
 | **Tell you things** | Time and date, weather for any city |
-| **Do things** | Open apps, take a screenshot, lock the screen |
+| **Do things** | Open apps and websites, change the volume, take a screenshot, lock the screen |
 | **Check on your day** | Unread email and calendar events (read-only) |
 
 Measured on a laptop with an RTX 4050 (6 GB): the first word of a reply
@@ -122,14 +122,29 @@ Ask in your own words:
 |---|---|
 | "What time is it?" / "What's the date?" | Reads your computer's clock |
 | "What's the weather in Mumbai?" | Current conditions and today's forecast from [Open-Meteo](https://open-meteo.com) |
-| "Open notepad" / "Launch the calculator" | Opens one of: browser, calculator, command prompt, file explorer, notepad, paint, settings, task manager |
+| "Open Chrome" / "Can you launch Spotify?" | Opens an app (see the list below) |
+| "Open YouTube" / "Go to GitHub" | Opens a website in your browser |
+| "Turn the volume up" / "Make it quieter" / "Set the volume to 30" / "Mute" | Steps the volume by 10%, sets a level, or mutes |
 | "Take a screenshot" | Saves an image to `Pictures/Jarvis` |
 | "Lock my computer" | Locks the screen |
 | "Any new mail?" | Counts unread mail from the last two days and names the newest senders and subjects |
 | "What's on my calendar today?" / "Am I free this week?" | Lists your events |
 
-Opening apps, screenshots and locking work on Windows. Apps come from a fixed
-list, so nothing the model says is ever run as a command.
+Apps, volume, screenshots and locking work on Windows. Apps come from a fixed
+list, so nothing the model says is ever run as a command:
+
+- **Always:** calculator, camera, clock, command prompt, file explorer,
+  notepad, paint, photos, settings, task manager.
+- **If installed:** Chrome, Edge, Firefox, Word, Excel, PowerPoint, Outlook,
+  VS Code, VLC, Spotify, Teams. Jarvis checks at start-up and only offers the
+  ones it finds.
+- **Websites:** browser (Google), YouTube, Gmail, Google Calendar, GitHub,
+  WhatsApp Web.
+
+Actions only happen when you ask for them: the sentence has to start with
+the request, optionally after "Jarvis", "please", "can you" or "I need you
+to". "Open Chrome" opens Chrome; "my exam is going to open with a hard
+question" is just conversation.
 
 ### Email and calendar
 
@@ -154,6 +169,9 @@ in code rather than by asking the model nicely:
 | The model would... | So the program... |
 |---|---|
 | Call a tool for anything ("tell me a joke" checked the time) | Offers a tool only when the message contains a matching phrase; the model picks which tool and its arguments |
+| Act on chat ("I start college tomorrow" opened Google Calendar) | Offers actions only when a sentence is phrased as a request |
+| Jump the volume ("quieter" arrived as down *and* 50%) | Ignores a level sent with "up" or "down" |
+| Answer differently to the same request | Chooses tools at temperature 0, and re-asks with the "nothing was done" note if it declines |
 | Claim actions it never took ("Email sent to Arjun.") | Attaches a note to the message, when no tool ran, saying nothing was done |
 | Change the subject after a lookup | Attaches the result to the question with an instruction to report it |
 | Embellish confirmations ("the window is 600x400 pixels") | Confirms actions in fixed words, with no second model call |

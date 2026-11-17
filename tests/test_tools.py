@@ -5,7 +5,17 @@ import pytest
 
 from jarvis.chat import Conversation
 from jarvis.llm import iter_content
-from jarvis.tasks import APPS, default_tools, get_time, get_weather, lock_computer, open_app, take_screenshot
+from jarvis.tasks import (
+    WEBSITES,
+    available_apps,
+    default_tools,
+    get_time,
+    get_weather,
+    lock_computer,
+    open_app,
+    set_volume,
+    take_screenshot,
+)
 from jarvis.tools import Tool, ToolBox, ToolCall
 
 
@@ -46,6 +56,14 @@ def test_requests_offer_the_matching_tool(message, expected):
         "What's two plus two?",
         "I need to unlock my potential",
         "It was a good time",
+        # Action words in ordinary sentences must not trigger actions.
+        "I start college tomorrow.",
+        "My exam is going to open with a hard question.",
+        "The volume of work is crazy this week.",
+        "I forgot to lock my computer yesterday.",
+        "I took a screenshot of it earlier.",
+        "The party was louder than I expected.",
+        "Can you tell me how to open a bank account?",
     ],
 )
 def test_ordinary_chat_offers_no_tools(message):
@@ -86,13 +104,166 @@ def test_weather_uses_home_city_and_reports_problems():
     assert get_weather("Nowhere", fetch=fake_weather_fetch) == "Error: no place called Nowhere was found."
 
 
+SOME_APPS = {"notepad": ["notepad.exe"], "chrome": "chrome.exe", "youtube": "https://www.youtube.com"}
+
+
 def test_open_app_only_launches_listed_apps():
     launched = []
 
-    assert open_app("Notepad", launch=launched.append) in ("Opened notepad.", "Error: opening apps is only supported on Windows.")
-    assert open_app("format c:", launch=launched.append).startswith("Error: I can only open")
-    assert open_app("browser", launch=launched.append) == "Opened browser."
-    assert all(target in APPS.values() for target in launched)
+    assert open_app("Notepad", SOME_APPS, launch=launched.append) == "Opened notepad."
+    assert open_app("  Google   Chrome ", SOME_APPS, launch=launched.append) == "Opened chrome."
+    assert open_app("YouTube", SOME_APPS, launch=launched.append) == "Opened youtube."
+    assert open_app("format c:", SOME_APPS, launch=launched.append) == (
+        "Error: format c: is not one of the apps I can open."
+    )
+    assert launched == [["notepad.exe"], "chrome.exe", "https://www.youtube.com"]
+
+
+def test_only_installed_programs_are_offered(monkeypatch):
+    monkeypatch.setattr("jarvis.tasks.os.name", "nt")
+
+    apps = available_apps(is_installed=lambda exe: exe in ("chrome.exe", "code.exe"))
+
+    assert "chrome" in apps and "vs code" in apps
+    assert "firefox" not in apps and "word" not in apps
+    assert {"notepad", "settings", "youtube", "browser"} <= set(apps)
+    assert list(apps) == sorted(apps)
+
+
+def test_websites_are_offered_everywhere(monkeypatch):
+    monkeypatch.setattr("jarvis.tasks.os.name", "posix")
+
+    apps = available_apps(is_installed=lambda exe: True)
+
+    assert set(apps) == set(WEBSITES)
+
+
+def test_the_model_is_only_offered_apps_that_exist():
+    tool = next(t for t in default_tools(apps=SOME_APPS) if t.name == "open_app")
+
+    assert tool.schema()["function"]["parameters"]["properties"]["app"]["enum"] == list(SOME_APPS)
+
+
+class FakeMixer:
+    def __init__(self, level=40, muted=False):
+        self.level = level
+        self.is_muted = muted
+
+    def get(self):
+        return self.level
+
+    def set(self, percent):
+        self.level = percent
+
+    def muted(self):
+        return self.is_muted
+
+    def mute(self, on):
+        self.is_muted = on
+
+
+@pytest.mark.parametrize(
+    "change, level, start, expected, final",
+    [
+        ("up", None, 40, "Volume is now 50%.", 50),
+        ("louder", None, 95, "Volume is now 100%.", 100),
+        ("down", None, 40, "Volume is now 30%.", 30),
+        ("down", None, 5, "Volume is now 0%.", 0),
+        ("set", 75, 40, "Volume is now 75%.", 75),
+        ("", "20%", 40, "Volume is now 20%.", 20),
+        ("set", 150, 40, "Volume is now 100%.", 100),
+        # A level sent along with up or down is ignored: it is a step, not a jump.
+        ("down", 50, 40, "Volume is now 30%.", 30),
+        ("down", 0, 40, "Volume is now 30%.", 30),
+        ("up", 90, 40, "Volume is now 50%.", 50),
+    ],
+)
+def test_volume_changes(change, level, start, expected, final):
+    mixer = FakeMixer(start)
+
+    assert set_volume(change, level, mixer=mixer) == expected
+    assert mixer.level == final
+
+
+def test_mute_and_unmute():
+    mixer = FakeMixer(40)
+
+    assert set_volume("mute", mixer=mixer) == "Muted."
+    assert mixer.is_muted and mixer.level == 40
+    assert set_volume("unmute", mixer=mixer) == "Volume is now 40%."
+    assert not mixer.is_muted
+
+
+def test_turning_up_also_unmutes_but_turning_down_does_not():
+    up, down = FakeMixer(40, muted=True), FakeMixer(40, muted=True)
+
+    set_volume("up", mixer=up)
+    set_volume("down", mixer=down)
+
+    assert not up.is_muted
+    assert down.is_muted
+
+
+def test_unclear_volume_requests_are_errors():
+    mixer = FakeMixer(40)
+
+    assert set_volume("", mixer=mixer).startswith("Error: say whether")
+    assert set_volume("set", mixer=mixer).startswith("Error: say whether")
+    assert set_volume("set", "loud", mixer=mixer) == "Error: loud is not a volume level."
+    assert mixer.level == 40
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Turn the volume up",
+        "make it louder",
+        "mute",
+        "unmute the sound",
+        "set volume to 30",
+        "turn the music down",
+        "Volume up please",
+        "Can you make it louder?",
+        "turn it down",
+        "Hey Jarvis, mute.",
+    ],
+)
+def test_volume_requests_offer_the_volume_tool(message):
+    assert names(ToolBox(default_tools(apps=SOME_APPS)).relevant(message)) == ["set_volume"]
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        ("Can you open chrome?", ["open_app"]),
+        ("Jarvis, open YouTube.", ["open_app"]),
+        ("Hey Jarvis. Please launch Spotify", ["open_app"]),
+        ("I need you to open the calculator", ["open_app"]),
+        ("Thanks! Now lock my laptop.", ["lock_computer"]),
+        ("Could you please take a screenshot", ["take_screenshot"]),
+        ("go ahead and lock it", ["lock_computer"]),
+    ],
+)
+def test_requests_are_recognised_after_polite_openings(message, expected):
+    assert names(ToolBox(default_tools(apps=SOME_APPS)).relevant(message)) == expected
+
+
+def test_confirmation_can_quote_the_result():
+    client = ScriptedClient([ToolCall("vol", {"change": "up"})])
+    box = ToolBox(
+        [
+            Tool(
+                "vol",
+                "Volume.",
+                lambda change="": "Volume is now 50%.",
+                {"type": "object", "properties": {"change": {}}},
+                triggers="volume",
+                confirmation="{result}",
+            )
+        ]
+    )
+
+    assert "".join(Conversation(client, "sys", toolbox=box).ask("volume up")) == "Volume is now 50%."
 
 
 def test_screenshot_is_saved_with_a_timestamp(tmp_path):
@@ -194,12 +365,29 @@ def test_no_tools_are_offered_for_ordinary_chat():
     assert client.calls[0]["tools"] is None
 
 
-def test_plain_answer_when_the_model_declines_the_tool():
-    client = ScriptedClient(["About ", "time you asked."])
-    chat = Conversation(client, "sys", toolbox=toolbox_with(lambda: "unused"))
+def test_declining_the_tool_means_asking_again_with_the_no_action_note():
+    client = ScriptedClient(["Done, the time is set!"], ["About ", "time you asked."])
+    chat = Conversation(client, "sys", toolbox=toolbox_with(lambda: "unused"), no_action_note="nothing was done")
 
+    # The first answer, written without the note, is thrown away.
     assert "".join(chat.ask("it is time to talk")) == "About time you asked."
-    assert len(client.calls) == 1
+    first, second = client.calls
+    assert first["tools"] and second["tools"] is None
+    assert second["messages"][-1]["content"].endswith("[nothing was done]")
+
+
+def test_tool_choice_is_made_at_temperature_zero():
+    temperatures = []
+
+    class Client(ScriptedClient):
+        def stream_chat(self, messages, temperature=0.7, tools=None):
+            temperatures.append((bool(tools), temperature))
+            yield from super().stream_chat(messages, temperature, tools)
+
+    chat = Conversation(Client([ToolCall("get_time")], ["Nine."]), "sys", temperature=0.7, toolbox=toolbox_with(lambda: "9"))
+    list(chat.ask("what time is it"))
+
+    assert temperatures == [(True, 0), (False, 0.7)]
 
 
 def test_tool_call_written_as_text_is_retried_without_tools():
