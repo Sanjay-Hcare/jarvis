@@ -88,19 +88,26 @@ def command_after_wake_word(transcript: str, name_confirmed: bool = False) -> st
     said with nothing after it.
 
     name_confirmed: the name was already recognised in an earlier look at
-    the same audio, so the first word after the greeting is taken to be it
-    however it is spelt this time (one transcription gave "Jarvis", the
-    next "Javish").
+    the same audio, so a looser spelling of it is accepted this time (one
+    transcription gave "Jarvis", the next "Javish"). If the first word
+    after the greeting does not resemble the name at all ("What time is
+    it?"), the name was simply left out and the whole request is kept.
     """
     for match in _WORD.finditer(transcript.lower()):
         word = match.group()
-        if name_confirmed or _sounds_like_jarvis(word):
-            if not name_confirmed or word not in _GREETING_WORDS:
-                return transcript[match.end() :].lstrip(" ,.!?;:-").strip()
+        if _sounds_like_jarvis(word) or (name_confirmed and _resembles_jarvis(word)):
+            return transcript[match.end() :].lstrip(" ,.!?;:-").strip()
+        if word in _GREETING_WORDS:
             continue
-        if word not in _GREETING_WORDS:
-            return None
+        if name_confirmed:
+            return transcript[match.start() :].strip()
+        return None
     return None
+
+
+def _resembles_jarvis(word: str) -> bool:
+    """A loose likeness, used only once the name has been heard: "Javish", "Jobbys"."""
+    return word[:1] in ("j", "g") or _edit_distance(word, "jarvis") <= 3
 
 
 # Audio kept after a detection before checking the name, so all of "Jarvis" is in it.

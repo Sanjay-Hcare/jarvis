@@ -145,7 +145,7 @@ def test_the_name_is_checked_before_the_beep():
 
 
 def test_the_full_request_is_kept_even_if_the_name_is_misheard_the_second_time():
-    transcripts = iter(["Hey Jarvis, what", "Hey, service what time is it"])
+    transcripts = iter(["Hey Jarvis, what", "Hey, Jobbys what time is it"])
     frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(1, SPEECH) + seconds(1.5, QUIET)
     listener = WakeListener(FakeModel(), lambda audio: next(transcripts))
 
@@ -210,7 +210,11 @@ def test_a_second_look_after_an_early_detection_still_wakes():
         ("Hey, Javish. What is the top 5 global news?", "What is the top 5 global news?"),
         ("Hey Jervis, what time is it?", "what time is it?"),
         ("OK, hey Garvis open YouTube", "open YouTube"),
+        ("Hey, Jobbys, what is the weather?", "what is the weather?"),
         ("Hey.", None),
+        # Real transcripts where the name was left out: the first word is kept.
+        ("What time it is?", "What time it is?"),
+        ("Hey, what time is it?", "what time is it?"),
     ],
 )
 def test_once_the_name_is_confirmed_any_spelling_of_it_is_accepted(transcript, command):
