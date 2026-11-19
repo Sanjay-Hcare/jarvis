@@ -6,7 +6,7 @@ import sys
 import time
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from jarvis.chat import Conversation
 from jarvis.config import Settings
@@ -37,29 +37,54 @@ def _start_speaker(settings: Settings) -> Any:
         return None
 
 
-def reply_aloud(conversation: Conversation, text: str, name: str, speaker: Any) -> None:
-    """Print the reply as it streams and speak each sentence as soon as it is complete."""
+def reply_aloud(
+    conversation: Conversation, text: str, name: str, speaker: Any, timings: dict[str, float] | None = None
+) -> None:
+    """Print the reply as it streams and speak each sentence as soon as it is complete.
+
+    timings, if given, receives when the first text arrived ("first_text"),
+    when the first sentence went to the voice ("first_sentence") and when
+    the text was finished ("done"), as time.perf_counter() values.
+    """
+    timings = {} if timings is None else timings
     splitter = SentenceSplitter()
     started = False
     for piece in conversation.ask(text):
         if not started:
+            timings["first_text"] = time.perf_counter()
             # Printed late so that tool lines come out above the reply.
             print(f"{name}: ", end="", flush=True)
             started = True
         print(piece, end="", flush=True)
         if speaker is not None:
             for sentence in splitter.feed(piece):
+                timings.setdefault("first_sentence", time.perf_counter())
                 speaker.say(sentence)
     print()
     if speaker is not None:
-        speaker.say(splitter.flush())
+        rest = splitter.flush()
+        if rest:
+            timings.setdefault("first_sentence", time.perf_counter())
+        speaker.say(rest)
+    timings["done"] = time.perf_counter()
 
 
-def _answer(conversation: Conversation, text: str, name: str, speaker: Any) -> None:
+def _answer(
+    conversation: Conversation, text: str, name: str, speaker: Any, log: Callable[[str], None] | None = None
+) -> None:
+    timings: dict[str, float] = {}
+    asked = time.perf_counter()
     try:
-        reply_aloud(conversation, text, name, speaker)
+        reply_aloud(conversation, text, name, speaker, timings)
     except LLMError as exc:
         print(f"\n[{exc}]", file=sys.stderr)
+    if log is not None:
+        parts = [f"{label} {timings[key] - asked:.2f}s" for key, label in (
+            ("first_text", "first words of the reply"),
+            ("first_sentence", "first sentence to the voice"),
+            ("done", "reply finished"),
+        ) if key in timings]
+        log("reply timing: " + (", ".join(parts) or "no reply"))
 
 
 def _default_microphone() -> str:
@@ -225,7 +250,7 @@ def _wake_word_loop(conversation: Conversation, settings: Settings, transcriber:
                     print("\r[heard my name, but no request]")
                     continue
                 print(f"\rYou: {command}")
-                _answer(conversation, command, name, speaker)
+                _answer(conversation, command, name, speaker, log)
                 # Sound recorded while the reply was being written is stale.
                 mic.discard()
     except AudioError as exc:

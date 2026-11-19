@@ -9,6 +9,7 @@ transcribed and the assistant only responds if "Jarvis" was really said.
 from __future__ import annotations
 
 import re
+import time
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -195,10 +196,15 @@ class WakeListener:
                     break
                 lead.append(extra)
                 tail += 1
+            started = time.perf_counter()
             first_look = self._transcribe(_as_float(lead))
+            check_seconds = time.perf_counter() - started
             if command_after_wake_word(first_look) is None:
                 if self._log is not None:
-                    self._log(f"near miss (score {score:.2f}): heard {first_look!r}; ignored")
+                    self._log(
+                        f"near miss (score {score:.2f}): heard {first_look!r}; ignored "
+                        f"(name check took {check_seconds:.2f}s)"
+                    )
                 # The detector may have fired before the name was finished, so
                 # the audio and the detector's state are kept for another look;
                 # a pause stops it from checking the same moment over and over.
@@ -212,14 +218,17 @@ class WakeListener:
             heard = self._record_command(frames, lead, waited=tail, speech_level=speech_level)
             self._model.reset()
             self._recent.clear()
+            started = time.perf_counter()
             transcript = self._transcribe(heard)
+            transcribe_seconds = time.perf_counter() - started
             command = command_after_wake_word(transcript, name_confirmed=True)
             if command is None:
                 command = command_after_wake_word(first_look) or ""
             if self._log is not None:
                 self._log(
                     f"woke (score {score:.2f}); recorded {len(heard) / 16000:.1f}s with speech level "
-                    f"{speech_level:.4f}; heard {transcript!r}; request: {command!r}"
+                    f"{speech_level:.4f}; heard {transcript!r}; request: {command!r} "
+                    f"(name check {check_seconds:.2f}s, transcription {transcribe_seconds:.2f}s)"
                 )
             yield command
 
