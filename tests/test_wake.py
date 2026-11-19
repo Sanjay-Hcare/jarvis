@@ -242,6 +242,17 @@ def test_a_pause_after_the_first_word_waits_for_the_rest():
     assert len(heard[-1]) / 16000 >= 1.6 + 0.4 + 0.3 + 1.5 + 1.0
 
 
+def test_a_quiet_voice_is_not_kept_waiting_after_a_whole_request():
+    # A quiet voice: only every other moment is loud enough to count as speech.
+    quiet_voice = [frame(SPEECH if i % 2 else QUIET) for i in range(round(1.2 / 0.08))]
+    frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(0.5, SPEECH) + quiet_voice + seconds(3, QUIET)
+
+    _commands, heard, _woke, _model = listen(iter(frames))
+
+    # Ends after the normal 1 s pause, not the longer early-pause wait.
+    assert len(heard[-1]) / 16000 <= 1.6 + 0.5 + 1.2 + 1.0 + 0.2
+
+
 def test_a_long_silence_after_a_short_start_still_ends_the_request():
     frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(0.4, SPEECH) + seconds(0.3, SPEECH) + seconds(10, QUIET)
 
