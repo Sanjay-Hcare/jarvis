@@ -123,7 +123,10 @@ class ListenSettings:
     # a low threshold from causing false wake-ups.
     threshold: float = 0.2
     pre_roll_seconds: float = 1.6  # audio kept from before the detection
-    start_timeout: float = 6.0  # how long to wait for a command to begin
+    # How long to wait for a request to begin after the name. If nothing
+    # comes, Jarvis asks "Yes?" and waits follow_up_timeout for it.
+    start_timeout: float = 3.0
+    follow_up_timeout: float = 6.0
     end_silence: float = 1.0  # this much quiet after speech ends the command
     # People often say the first word, then stop to wait for the beep
     # ("Hey Jarvis, what... time is it?"). If what was said before a pause
@@ -156,12 +159,16 @@ class WakeListener:
         on_wake: Callable[[], None] | None = None,
         is_speaking: Callable[[], bool] = lambda: False,
         log: Callable[[str], None] | None = None,
+        on_name_only: Callable[[], None] | None = None,
     ) -> None:
         self._model = model
         self._transcribe = transcribe
         self._settings = settings or ListenSettings()
         self._on_wake = on_wake
         self._is_speaking = is_speaking
+        # Called when only the name was said; the next thing said is then
+        # taken as the request, without needing the name again.
+        self._on_name_only = on_name_only
         # For diagnosing "it doesn't react": loudness and near-misses.
         self._log = log
         self._window_levels: list[float] = []
@@ -240,7 +247,29 @@ class WakeListener:
                     f"{speech_level:.4f}; heard {transcript!r}; request: {command!r} "
                     f"(name check {check_seconds:.2f}s, transcription {transcribe_seconds:.2f}s)"
                 )
+            if not command and self._on_name_only is not None:
+                command = self._follow_up(frames, speech_level)
             yield command
+
+    def _follow_up(self, frames: Iterator[np.ndarray], speech_level: float) -> str:
+        """After the name alone, prompt ("Yes?") and take the next thing said as the request."""
+        self._on_name_only()
+        # Skip the prompt itself, so its own "Yes?" is not heard as the request.
+        for _frame in frames:
+            if not self._is_speaking():
+                break
+        heard = self._record_command(
+            frames,
+            [],
+            waited=0,
+            speech_level=speech_level,
+            start_timeout=self._settings.follow_up_timeout,
+            after_name=False,
+        )
+        request = self._transcribe(heard).strip()
+        if self._log is not None:
+            self._log(f"follow-up: recorded {len(heard) / 16000:.1f}s; heard {request!r}")
+        return request
 
     def _note(self, level: float, score: float) -> None:
         """Every five seconds, log how loud the microphone was and the best wake score."""
@@ -264,14 +293,23 @@ class WakeListener:
         return max(quiet * 3, self._settings.min_level)
 
     def _record_command(
-        self, frames: Iterator[np.ndarray], collected: list[np.ndarray], waited: int, speech_level: float
+        self,
+        frames: Iterator[np.ndarray],
+        collected: list[np.ndarray],
+        waited: int,
+        speech_level: float,
+        start_timeout: float | None = None,
+        after_name: bool = True,
     ) -> np.ndarray:
         """Collect the wake word plus what follows, until the speaker stops.
 
         collected already holds the audio up to now, and waited the number
-        of frames since the detection.
+        of frames since the detection. after_name is False for a follow-up
+        recording, where no name is still sounding at the start.
         """
         settings = self._settings
+        if start_timeout is None:
+            start_timeout = settings.start_timeout
         collected = list(collected)
         started = False
         quiet_frames = 0
@@ -279,11 +317,11 @@ class WakeListener:
         end_quiet = round(settings.end_silence / FRAME_SECONDS)
         early_end_quiet = round(settings.early_pause_silence / FRAME_SECONDS)
         short_start = round(settings.short_start_seconds / FRAME_SECONDS)
-        start_limit = round(settings.start_timeout / FRAME_SECONDS)
+        start_limit = round(start_timeout / FRAME_SECONDS)
         total_limit = round(settings.max_seconds / FRAME_SECONDS)
         # The tail of "Jarvis" is still sounding when the detector fires, so
         # it does not count as the start of a command.
-        grace = round(0.4 / FRAME_SECONDS)
+        grace = round(0.4 / FRAME_SECONDS) if after_name else 0
 
         for frame in frames:
             collected.append(frame)

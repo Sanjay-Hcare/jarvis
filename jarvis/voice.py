@@ -217,6 +217,14 @@ def _wake_word_loop(conversation: Conversation, settings: Settings, transcriber:
         if settings.wake_beep:
             _beep()
 
+    def on_name_only() -> None:
+        print(f"\r{settings.assistant_name}: Yes?          ")
+        if speaker is not None:
+            speaker.say("Yes?")
+        elif settings.wake_beep:
+            _beep()
+        print("[listening...]", end="", flush=True)
+
     log = None
     if settings.debug_log:
         # Contains what was heard, so it is only written when asked for.
@@ -237,6 +245,7 @@ def _wake_word_loop(conversation: Conversation, settings: Settings, transcriber:
         on_wake=on_wake,
         is_speaking=lambda: bool(speaker is not None and speaker.speaking),
         log=log,
+        on_name_only=on_name_only,
     )
     name = settings.assistant_name
     try:

@@ -259,3 +259,58 @@ def test_a_long_silence_after_a_short_start_still_ends_the_request():
     _commands, heard, _woke, _model = listen(iter(frames))
 
     assert len(heard[-1]) / 16000 <= 1.6 + 0.7 + 2.6
+
+
+def test_name_alone_prompts_and_takes_the_next_thing_said():
+    transcripts = iter(["Hey Jarvis.", "Hey Jarvis.", "what time is it?"])
+    prompts = []
+    speaking = iter([True] * 6)  # the prompt plays for six frames, then stops
+
+    def is_speaking():
+        return next(speaking, False)
+
+    frames = (
+        seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(0.3, SPEECH) + seconds(2.2, QUIET)
+        + seconds(0.5, SPEECH)  # the prompt "Yes?" coming back through the microphone
+        + seconds(0.3, QUIET) + seconds(1.0, SPEECH) + seconds(1.5, QUIET)
+    )
+    listener = WakeListener(
+        FakeModel(), lambda audio: next(transcripts), on_name_only=lambda: prompts.append("Yes?"), is_speaking=is_speaking
+    )
+
+    assert list(listener.commands(iter(frames))) == ["what time is it?"]
+    assert prompts == ["Yes?"]
+
+
+def test_name_alone_without_a_prompt_handler_still_reports_empty():
+    frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(0.3, SPEECH) + seconds(8, QUIET)
+
+    commands, _heard, _woke, _model = listen(iter(frames), transcript="Hey Jarvis.")
+
+    assert commands == [""]
+
+
+def test_silence_after_the_prompt_gives_an_empty_request():
+    transcripts = iter(["Hey Jarvis.", "Hey Jarvis.", ""])
+    frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(0.3, SPEECH) + seconds(16, QUIET)
+    listener = WakeListener(FakeModel(), lambda audio: next(transcripts), on_name_only=lambda: None)
+
+    assert list(listener.commands(iter(frames))) == [""]
+
+
+def test_the_prompt_comes_after_three_seconds_not_six():
+    transcripts = iter(["Hey Jarvis.", "Hey Jarvis.", ""])
+    recorded = []
+
+    def transcribe(audio):
+        recorded.append(len(audio) / 16000)
+        return next(transcripts)
+
+    frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(0.3, SPEECH) + seconds(12, QUIET)
+    listener = WakeListener(FakeModel(), transcribe, on_name_only=lambda: None)
+    list(listener.commands(iter(frames)))
+
+    first_look, main, follow_up = recorded
+    # The main recording gave up 3 s after the name; the follow-up waited 6 s.
+    assert main <= 1.6 + 3.1
+    assert 5.9 <= follow_up <= 6.1
