@@ -55,6 +55,15 @@ def test_language_and_vad_are_passed_through():
 
     assert model.kwargs["language"] is None
     assert model.kwargs["vad_filter"] is True
+    assert "hotwords" not in model.kwargs
+
+
+def test_a_hint_word_is_passed_as_a_hotword():
+    model = FakeModel(["Hey Jarvis"])
+    load, _ = loader_for(model)
+    Transcriber(loader=load).transcribe(np.zeros(8000, dtype=np.float32), hint="Jarvis")
+
+    assert model.kwargs["hotwords"] == "Jarvis"
 
 
 def test_auto_falls_back_to_cpu_when_gpu_fails():

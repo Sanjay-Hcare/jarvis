@@ -232,7 +232,7 @@ def _wake_word_loop(conversation: Conversation, settings: Settings, transcriber:
 
     listener = WakeListener(
         model,
-        transcriber.transcribe,
+        lambda audio: transcriber.transcribe(audio, hint=settings.assistant_name),
         ListenSettings(threshold=settings.wake_threshold),
         on_wake=on_wake,
         is_speaking=lambda: bool(speaker is not None and speaker.speaking),

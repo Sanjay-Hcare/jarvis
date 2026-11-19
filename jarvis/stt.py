@@ -87,10 +87,18 @@ class Transcriber:
         for _segment in segments:
             pass
 
-    def transcribe(self, audio: Any) -> str:
-        """Return the words spoken in 16 kHz mono float32 audio ('' if none)."""
+    def transcribe(self, audio: Any, hint: str = "") -> str:
+        """Return the words spoken in 16 kHz mono float32 audio ('' if none).
+
+        hint: a word that is likely to be said, such as the assistant's name.
+        Without it, an Indian-English "Hey Jarvis" was heard as "Hey job is"
+        or "Hey Jobbys"; with it, as "Hey Jarvis".
+        """
         if len(audio) == 0:
             return ""
+        options: dict[str, Any] = {}
+        if hint:
+            options["hotwords"] = hint
         segments, _info = self._model.transcribe(
             audio,
             language=self.language,
@@ -98,5 +106,6 @@ class Transcriber:
             # Skip silence so a quiet recording returns nothing instead of a guess.
             vad_filter=True,
             condition_on_previous_text=False,
+            **options,
         )
         return " ".join(segment.text.strip() for segment in segments).strip()
