@@ -87,15 +87,8 @@ setting `user_name`.
 
 ## Voice
 
-- **Hands-free (new).** `python -m jarvis --wake`, or `wake_word = true` in
-  `config.toml`: say "Hey Jarvis" and then your request, in one go or after
-  the beep. Saying it while Jarvis is talking interrupts it. Two checks keep
-  false wake-ups down: [openWakeWord](https://github.com/dscripka/openWakeWord)
-  listens for something that sounds like "Hey Jarvis", then the words are
-  transcribed and Jarvis only answers if its name was really said at the
-  start ("Hey Travis" and "I think Jarvis is a great name" are ignored). The
-  microphone stays open in this mode, but nothing is recorded or kept until
-  the wake word is heard, and nothing leaves the computer.
+- **Hands-free.** `python -m jarvis --wake`, or `wake_word = true` in
+  `config.toml`. See [Hands-free mode](#hands-free-mode) below.
 - **Talk key.** `push_to_talk_key` in `config.toml`; use `f9` or `alt_r` if
   your keyboard has no Right Ctrl. The key is watched system-wide while voice
   mode runs, so it works when another window is in front. Only that one key
@@ -106,6 +99,54 @@ setting `user_name`.
 - **Accuracy.** `stt_model` can be `tiny`, `base`, `small` (default) or
   `medium`. Bigger is more accurate and slower. `stt_language = ""` lets it
   detect the language instead of assuming English.
+
+## Hands-free mode
+
+Say "Hey Jarvis" and your request, in one go ("Hey Jarvis, what time is
+it?") or with a pause for the beep. If you say only "Hey Jarvis", it answers
+"Yes?" after three seconds and waits for the request. Saying "Hey Jarvis"
+while it is talking interrupts it.
+
+How a wake-up is decided:
+
+1. [openWakeWord](https://github.com/dscripka/openWakeWord) listens
+   continuously, on the processor, for anything that sounds like "Hey
+   Jarvis". It is kept sensitive (`wake_threshold = 0.2`), because it was
+   trained on synthetic voices: they score 1.0, while a real Indian-English
+   voice scored 0.2 to 0.5.
+2. Before beeping, the last two seconds are transcribed with Whisper, with
+   "Jarvis" given as a likely word. Jarvis only wakes if its name was said
+   first, after at most a greeting, so "Hey Travis" and "I think Jarvis is a
+   great name" stay silent.
+3. It records until you pause for a second (longer if you have only said one
+   word, since people often stop to wait for the beep), transcribes the
+   whole thing, and passes on what came after the name.
+
+The microphone stays open in this mode, but nothing is recorded or kept
+until the wake word is heard, and nothing leaves the computer.
+
+### If it does not react, or is slow
+
+- **Look at the start-up notes.** On battery, a laptop holds its graphics
+  card and processor down and replies can take ten times longer; with little
+  free memory, Windows has to make room first. Jarvis says when either is the
+  case.
+- **Turn on the diagnostic log** with `debug_log = "data/debug.log"` in
+  `config.toml` and try a few times. Every five seconds it notes how loud the
+  microphone was and the best wake score; for each attempt it notes what was
+  heard and how long each step took. It records what you say, so turn it off
+  again afterwards.
+- **If the best wake score stays below `wake_threshold`** while you are
+  saying "Hey Jarvis", lower the threshold a little (for example to 0.15).
+  Each extra detection is checked for the name, so this costs a little
+  processing rather than false wake-ups.
+- **If the log shows the name heard as something else**, such as "Hey job
+  is", that is the transcription; the "Jarvis" hint fixes most cases.
+
+What testing found: with Windows' Indian-English voices at the loudness of a
+laptop microphone across a desk, all 8 test requests woke Jarvis with the
+right words. One of 12 look-alike phrases still got an answer ("Hey, jar of
+jam please"), a cost of the "Jarvis" hint.
 
 ## Memory
 
@@ -181,6 +222,17 @@ in code rather than by asking the model nicely:
 | Act on chat ("I start college tomorrow" opened Google Calendar) | Offers actions only when a sentence is phrased as a request |
 | Jump the volume ("quieter" arrived as down *and* 50%) | Ignores a level sent with "up" or "down" |
 | Answer differently to the same request | Chooses tools at temperature 0, and re-asks with the "nothing was done" note if it declines |
+
+The wake word needed the same treatment, for the detector and for speech
+recognition:
+
+| The wake-up would... | So the program... |
+|---|---|
+| Ignore a real voice (it scored 0.27, against 0.5 needed) | Detects at 0.2 and confirms the name with Whisper before beeping |
+| Fire on "Hey Travis" or "hey, jar of jam" | Answers only if the name was said first, after at most a greeting |
+| Hear "Hey Jarvis" as "Hey job is" | Gives Whisper "Jarvis" as a likely word |
+| Spell the name differently the second time ("Javish") | Accepts a looser spelling once the first look has found the name |
+| Cut off "what... time is it?" at the pause | Waits longer when only one word has been said |
 | Claim actions it never took ("Email sent to Arjun.") | Attaches a note to the message, when no tool ran, saying nothing was done |
 | Change the subject after a lookup | Attaches the result to the question with an instruction to report it |
 | Embellish confirmations ("the window is 600x400 pixels") | Confirms actions in fixed words, with no second model call |
