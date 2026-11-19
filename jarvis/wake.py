@@ -117,6 +117,11 @@ class ListenSettings:
     pre_roll_seconds: float = 1.6  # audio kept from before the detection
     start_timeout: float = 6.0  # how long to wait for a command to begin
     end_silence: float = 1.0  # this much quiet after speech ends the command
+    # People often say the first word, then stop to wait for the beep
+    # ("Hey Jarvis, what... time is it?"). Until this much of the request
+    # has been spoken, a pause has to be early_pause_silence long to end it.
+    short_start_seconds: float = 1.0
+    early_pause_silence: float = 2.5
     max_seconds: float = 15.0
     # Never treat quieter audio than this as speech. A laptop microphone in a
     # quiet room measured about 0.002, and speech from across a desk 0.005
@@ -251,7 +256,10 @@ class WakeListener:
         collected = list(collected)
         started = False
         quiet_frames = 0
+        spoken_frames = 0
         end_quiet = round(settings.end_silence / FRAME_SECONDS)
+        early_end_quiet = round(settings.early_pause_silence / FRAME_SECONDS)
+        short_start = round(settings.short_start_seconds / FRAME_SECONDS)
         start_limit = round(settings.start_timeout / FRAME_SECONDS)
         total_limit = round(settings.max_seconds / FRAME_SECONDS)
         # The tail of "Jarvis" is still sounding when the detector fires, so
@@ -265,8 +273,10 @@ class WakeListener:
             if waited > grace and loud:
                 started = True
             if started:
+                spoken_frames += loud
                 quiet_frames = 0 if loud else quiet_frames + 1
-                if quiet_frames >= end_quiet:
+                needed = early_end_quiet if spoken_frames < short_start else end_quiet
+                if quiet_frames >= needed:
                     break
             elif waited >= start_limit:
                 break

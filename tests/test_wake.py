@@ -223,3 +223,24 @@ def test_a_respelt_name_in_the_full_transcript_keeps_the_request():
     listener = WakeListener(FakeModel(), lambda audio: next(transcripts))
 
     assert list(listener.commands(iter(frames))) == ["What is the top 5 global news happening right now?"]
+
+
+def test_a_pause_after_the_first_word_waits_for_the_rest():
+    # "Hey Jarvis, what" ... 1.5 s waiting for the beep ... "time is it?"
+    frames = (
+        seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(0.4, SPEECH) + seconds(0.3, SPEECH)
+        + seconds(1.5, QUIET) + seconds(1.0, SPEECH) + seconds(1.5, QUIET)
+    )
+
+    _commands, heard, _woke, _model = listen(iter(frames))
+
+    # The words after the pause are part of the request.
+    assert len(heard[-1]) / 16000 >= 1.6 + 0.4 + 0.3 + 1.5 + 1.0
+
+
+def test_a_long_silence_after_a_short_start_still_ends_the_request():
+    frames = seconds(1, QUIET) + [frame(SPEECH, wake=True)] + seconds(0.4, SPEECH) + seconds(0.3, SPEECH) + seconds(10, QUIET)
+
+    _commands, heard, _woke, _model = listen(iter(frames))
+
+    assert len(heard[-1]) / 16000 <= 1.6 + 0.7 + 2.6
