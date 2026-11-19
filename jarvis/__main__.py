@@ -16,6 +16,7 @@ from jarvis.config import Settings, load_settings
 from jarvis.llm import LLMError, OllamaClient
 from jarvis.memory import FactExtractor, Memory, MemoryStore
 from jarvis.persona import NO_ACTION_NOTE, TOOL_RESULT_NOTE, build_system_prompt
+from jarvis.system import current_warnings
 from jarvis.tasks import default_tools
 from jarvis.tools import ToolBox, ToolCall
 
@@ -165,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     # Load the model now, so the first reply is not held up by it.
     client.preload()
+    for warning in current_warnings():
+        print(f"[note: {warning}]")
     memory = build_memory(settings, client)
     conversation = build_conversation(settings, client, memory)
 

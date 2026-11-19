@@ -235,6 +235,7 @@ calendar, so they run anywhere in under a second.
 | `jarvis/sentences.py` | Cuts the streamed reply into sentences |
 | `jarvis/tts.py` | Text to speech with background, interruptible playback |
 | `jarvis/config.py` | Settings from `config.toml` and the environment |
+| `jarvis/system.py` | Start-up warnings when on battery or low on memory |
 
 ## License
 
